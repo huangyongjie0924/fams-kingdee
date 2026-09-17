@@ -307,8 +307,9 @@ func (s *Service) mapCard(tx *sql.Tx, src *kingdee.AssetCard) (*model.AssetCard,
 		// 金蝶没有独立的「资产类型」字段，按口径用资产类别名称填充；price 大于 0 时才是含税金额
 		FinAmountWithTax: parseAmount(src.Price),
 	}
-	// 财务分录子表：实测每张卡最多一条。这里照实解析，但星瀚全库给的都是 0——
-	// 资产原值 / 累计折旧 / 净值取不到，只能人工维护，详见 store.mergeOwnedFields。
+	// 财务明细子表：星瀚侧资产原值 / 累计折旧 / 净值都在明细表上，finentry 是唯一出口。
+	// 这里照实解析，但实测 200 行有值的 finentry 里这两列全是 0、另 27 行为 null——
+	// 取值取不到，只能人工维护，详见 store.mergeOwnedFields 与 integration/kingdee/types.go。
 	if len(src.FinEntry) > 0 {
 		c.FinOriginalValue = parseAmount(src.FinEntry[0].FinOriginalVal)
 		c.FinNetValue = parseAmount(src.FinEntry[0].FinNetWorth)

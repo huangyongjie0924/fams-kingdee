@@ -279,8 +279,8 @@ func mergeOwnedFields(dst, src *model.AssetCard) {
 	if src.OwnerCompanyID != 0 {
 		dst.OwnerCompanyID = src.OwnerCompanyID
 	}
-	// 金额类字段星瀚一律给 0，实测已复核：price 恒为 0.000000；财务分录 finentry 有值的
-	// 200 张卡里 fin_originalval / fin_networth 全是 0，另有 27 张 finentry 直接是空数组。
+	// 金额类字段星瀚一律给 0，实测已复核：price 恒为 0.000000；财务明细子表 finentry
+	// 有值的 200 行里 fin_originalval / fin_networth 全是 0，另有 27 行 finentry 为 null。
 	// 也就是说这个接口根本取不到资产原值 / 累计折旧 / 净值。
 	// 所以这里只在大于 0 时覆盖，保住台账人工维护（卡片编辑 / Excel 导入）的金额；
 	// 将来星瀚侧把这三个数补进接口返回，这段逻辑不用改就会自动生效。
