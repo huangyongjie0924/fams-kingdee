@@ -1,0 +1,59 @@
+# 固定资产台账系统 · 配置模板
+#
+# 用法：复制为 config.yaml 后按实际环境填写。
+# config.yaml 含明文凭据，已被 .gitignore 排除，不要提交。
+#
+# 敏感字段可用环境变量覆盖（见 config/config.go 的 overrideIfSet），
+# 推荐把凭据放进 .env（start.sh 会自动 source）而非写在本文件里：
+#   KINGDEE_BASE_URL / KINGDEE_CLIENT_ID / KINGDEE_CLIENT_SECRET
+#   KINGDEE_USERNAME / KINGDEE_ACCOUNT_ID
+#   YZJ_BASE_URL / YZJ_APP_ID / YZJ_SECRET
+#
+# 注意：mysql.password 和 auth.jwt_secret 目前没有环境变量入口，只能写在本文件。
+
+server:
+  addr: ":8080"                  # HTTP 监听地址
+  tls_addr: ":8443"              # HTTPS 监听地址，留空则不启用
+  cert_file: "cert/server.crt"
+  key_file: "cert/server.key"    # 权限设 600
+  upload_dir: "uploads"
+  max_upload_mb: 10
+
+mysql:
+  host: "127.0.0.1"
+  port: 3306
+  user: "assetapp"               # 建议用只对 asset 库有权限的专用账号
+  password: "CHANGE_ME"
+  database: "asset"
+
+auth:
+  jwt_secret: "CHANGE_ME"        # 必须设置，否则启动即报错；换成随机值
+  token_hours: 12
+  init_admin_user: "admin"
+  init_admin_password: "CHANGE_ME"   # 首次建管理员用，登录后请改密
+
+code_rule:
+  prefix: "016"                  # 资产编码前缀
+  seq_width: 5                   # 流水号位数
+
+kingdee:
+  base_url: ""                   # 如 https://<your-kingdee-host>/ierp/kapi
+  client_id: ""
+  client_secret: ""
+  username: ""
+  account_id: ""
+  request_timeout: 30
+  page_size: 200                 # 上限 1000
+  max_retries: 3
+  query_path: "/v2/gcgs/fa/fa_asset_card/Select_AssetCard"
+
+yunzhijia:
+  base_url: ""                   # 如 https://<your-yunzhijia-host>
+  app_id: ""
+  secret: ""
+
+sync:
+  enable: false                  # 金蝶凭据缺失时会被强制关闭
+  interval_minutes: 60
+  dry_run: true                  # 首次接入建议先跑 dry_run
+  allow_full_sync: false

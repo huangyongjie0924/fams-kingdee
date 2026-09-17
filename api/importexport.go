@@ -1,0 +1,342 @@
+package api
+
+import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/xuri/excelize/v2"
+
+	"asset-mgr/model"
+)
+
+// importHeaders 是导入模板的列顺序，导出也复用同一套表头
+var importHeaders = []string{
+	"资产编码", "资产名称", "资产类别", "规格型号", "设备序列号", "计量单位", "状态", "金额",
+	"使用公司", "使用部门", "使用人", "管理人", "所属公司", "区域", "存放地点",
+	"购入日期", "使用期限(月)", "来源", "备注",
+	"原值", "累计折旧", "残值率(%)", "财务使用期限(月)", "供应商",
+}
+
+func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
+	f := excelize.NewFile()
+	defer f.Close()
+	sheet := "资产导入"
+	idx, err := f.NewSheet(sheet)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "生成模板失败")
+		return
+	}
+	f.SetActiveSheet(idx)
+	f.DeleteSheet("Sheet1")
+
+	for i, h := range importHeaders {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheet, cell, h)
+	}
+	f.SetCellValue(sheet, "A2", "")
+	f.SetCellValue(sheet, "B2", "示例：戴尔笔记本电脑")
+	f.SetCellValue(sheet, "C2", "电子产品及通信设备")
+	f.SetCellValue(sheet, "P2", "2026-01-15")
+
+	writeXLSX(w, f, "资产导入模板.xlsx")
+}
+
+func writeXLSX(w http.ResponseWriter, f *excelize.File, filename string) {
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename))
+	if err := f.Write(w); err != nil {
+		// 响应头已发出，只能记录
+		fmt.Printf("write xlsx: %v\n", err)
+	}
+}
+
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	// 导出没有第二条取数路径，全程走 ListCards，所以跟着列表一起受限：
+	// 只读账号导出的就是他自己那几张，不会绕过列表把全量导走。
+	sc, ok := s.assetScope(w, r)
+	if !ok {
+		return
+	}
+	q := parseListQuery(r)
+	q.Page = 1
+	q.PageSize = 500
+
+	f := excelize.NewFile()
+	defer f.Close()
+	sheet := "资产清单"
+	idx, err := f.NewSheet(sheet)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "生成导出文件失败")
+		return
+	}
+	f.SetActiveSheet(idx)
+	f.DeleteSheet("Sheet1")
+	for i, h := range importHeaders {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheet, cell, h)
+	}
+
+	row := 2
+	for {
+		res, err := s.st.ListCards(q, sc)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "查询资产失败")
+			return
+		}
+		for i := range res.Items {
+			c := res.Items[i]
+			vals := []any{
+				c.AssetCode, c.Name, c.CategoryName, c.Spec, c.SerialNo, c.Unit, c.Status, c.Amount,
+				c.UseCompanyName, c.UseDeptName, c.UserEmpName, c.ManagerEmpName, c.OwnerCompanyName,
+				c.AreaName, c.Location, c.PurchaseDate, c.UseMonths, c.Source, c.Remark,
+				c.FinOriginalValue, c.FinAccumDepreciaton, c.FinResidualRate, c.FinUseMonths, c.VendorName,
+			}
+			for j, v := range vals {
+				cell, _ := excelize.CoordinatesToCellName(j+1, row)
+				f.SetCellValue(sheet, cell, v)
+			}
+			row++
+		}
+		if int64(q.Page*q.PageSize) >= res.Total {
+			break
+		}
+		q.Page++
+	}
+
+	writeXLSX(w, f, fmt.Sprintf("资产清单_%s.xlsx", time.Now().Format("20060102")))
+}
+
+type importError struct {
+	Row     int    `json:"row"`
+	Column  string `json:"column"`
+	Message string `json:"message"`
+}
+
+func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(s.cfg.Server.MaxUploadMB << 20); err != nil {
+		writeErr(w, http.StatusBadRequest, "上传解析失败，文件可能超出大小限制")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "缺少上传文件")
+		return
+	}
+	defer file.Close()
+	if !strings.HasSuffix(strings.ToLower(header.Filename), ".xlsx") {
+		writeErr(w, http.StatusBadRequest, "只支持 .xlsx 格式")
+		return
+	}
+
+	f, err := excelize.OpenReader(file)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "Excel 解析失败："+err.Error())
+		return
+	}
+	defer f.Close()
+
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		writeErr(w, http.StatusBadRequest, "文件里没有工作表")
+		return
+	}
+	rows, err := f.GetRows(sheets[0])
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "读取工作表失败")
+		return
+	}
+	if len(rows) < 2 {
+		writeErr(w, http.StatusBadRequest, "没有数据行")
+		return
+	}
+
+	cards, errs := s.parseImportRows(rows)
+	if len(errs) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error":  fmt.Sprintf("共 %d 处问题，未写入任何数据", len(errs)),
+			"errors": errs,
+		})
+		return
+	}
+
+	n, err := s.st.ImportCards(cards, operatorOf(r))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "导入失败，已回滚："+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"imported": n})
+}
+
+func (s *Server) parseImportRows(rows [][]string) ([]model.AssetCard, []importError) {
+	var cards []model.AssetCard
+	var errs []importError
+	seenCode := map[string]int{}
+	codes := []string{}
+
+	for i, row := range rows[1:] {
+		rowNo := i + 2
+		get := func(idx int) string {
+			if idx < len(row) {
+				return strings.TrimSpace(row[idx])
+			}
+			return ""
+		}
+		if strings.TrimSpace(strings.Join(row, "")) == "" {
+			continue
+		}
+
+		var c model.AssetCard
+		c.AssetCode = get(0)
+		c.Name = get(1)
+		if c.Name == "" {
+			errs = append(errs, importError{rowNo, "资产名称", "必填"})
+		}
+		if c.AssetCode != "" {
+			if prev, dup := seenCode[c.AssetCode]; dup {
+				errs = append(errs, importError{rowNo, "资产编码",
+					fmt.Sprintf("与第 %d 行重复", prev)})
+			} else {
+				seenCode[c.AssetCode] = rowNo
+				codes = append(codes, c.AssetCode)
+			}
+		}
+
+		catName := get(2)
+		if catName == "" {
+			errs = append(errs, importError{rowNo, "资产类别", "必填"})
+		} else {
+			id, months, rate, err := s.st.LookupCategoryByName(catName)
+			if err != nil {
+				errs = append(errs, importError{rowNo, "资产类别", "查询失败"})
+			} else if id == 0 {
+				errs = append(errs, importError{rowNo, "资产类别", "系统里不存在：" + catName})
+			} else {
+				c.CategoryID = id
+				c.UseMonths = months
+				c.FinResidualRate = rate
+			}
+		}
+
+		c.Spec, c.SerialNo, c.Unit = get(3), get(4), get(5)
+		c.Status = get(6)
+		if c.Status == "" {
+			c.Status = model.StatusIdle
+		} else if !contains(model.AssetStatuses, c.Status) {
+			errs = append(errs, importError{rowNo, "状态", "取值非法：" + c.Status})
+		}
+		if v := get(7); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err != nil {
+				errs = append(errs, importError{rowNo, "金额", "不是数字：" + v})
+			} else {
+				c.Amount = f
+			}
+		}
+		c.UseCompanyID = s.lookupOrErr(&errs, rowNo, "使用公司", get(8), s.st.LookupCompanyByName)
+		c.UseDeptID = s.lookupOrErr(&errs, rowNo, "使用部门", get(9), s.st.LookupDepartmentByName)
+		c.UserEmpID = s.lookupOrErr(&errs, rowNo, "使用人", get(10), s.st.LookupEmployeeByName)
+		c.ManagerEmpID = s.lookupOrErr(&errs, rowNo, "管理人", get(11), s.st.LookupEmployeeByName)
+		c.OwnerCompanyID = s.lookupOrErr(&errs, rowNo, "所属公司", get(12), s.st.LookupCompanyByName)
+		c.AreaID = s.lookupOrErr(&errs, rowNo, "区域", get(13), s.st.LookupAreaByName)
+		c.Location = get(14)
+
+		if v := get(15); v != "" {
+			if d, ok := parseDate(v); ok {
+				c.PurchaseDate = d
+			} else {
+				errs = append(errs, importError{rowNo, "购入日期", "日期格式应为 2026-01-15，实际：" + v})
+			}
+		}
+		if v := get(16); v != "" {
+			if n, err := strconv.Atoi(v); err != nil {
+				errs = append(errs, importError{rowNo, "使用期限(月)", "不是整数：" + v})
+			} else {
+				c.UseMonths = n
+			}
+		}
+		if v := get(17); v != "" {
+			if !contains(model.AssetSources, v) {
+				errs = append(errs, importError{rowNo, "来源", "取值非法：" + v})
+			} else {
+				c.Source = v
+			}
+		}
+		c.Remark = get(18)
+
+		for _, f := range []struct {
+			idx   int
+			label string
+			dst   *float64
+		}{
+			{19, "原值", &c.FinOriginalValue},
+			{20, "累计折旧", &c.FinAccumDepreciaton},
+			{21, "残值率(%)", &c.FinResidualRate},
+		} {
+			if v := get(f.idx); v != "" {
+				if n, err := strconv.ParseFloat(v, 64); err != nil {
+					errs = append(errs, importError{rowNo, f.label, "不是数字：" + v})
+				} else {
+					*f.dst = n
+				}
+			}
+		}
+		if v := get(22); v != "" {
+			if n, err := strconv.Atoi(v); err != nil {
+				errs = append(errs, importError{rowNo, "财务使用期限(月)", "不是整数：" + v})
+			} else {
+				c.FinUseMonths = n
+			}
+		}
+		c.VendorID = s.lookupOrErr(&errs, rowNo, "供应商", get(23), s.st.LookupVendorByName)
+
+		c.FinStatus = "未入账"
+		c.FinNetValue = c.FinOriginalValue - c.FinAccumDepreciaton
+
+		cards = append(cards, c)
+	}
+
+	if len(codes) > 0 {
+		existing, err := s.st.ExistingCodes(codes)
+		if err != nil {
+			errs = append(errs, importError{0, "资产编码", "查重失败：" + err.Error()})
+		} else {
+			for code, rowNo := range seenCode {
+				if existing[code] {
+					errs = append(errs, importError{rowNo, "资产编码", "系统里已存在：" + code})
+				}
+			}
+		}
+	}
+	return cards, errs
+}
+
+func (s *Server) lookupOrErr(errs *[]importError, rowNo int, label, name string,
+	lookup func(string) (int64, error)) int64 {
+	if name == "" {
+		return 0
+	}
+	id, err := lookup(name)
+	if err != nil {
+		*errs = append(*errs, importError{rowNo, label, "查询失败"})
+		return 0
+	}
+	if id == 0 {
+		*errs = append(*errs, importError{rowNo, label, "系统里不存在：" + name})
+		return 0
+	}
+	return id
+}
+
+// parseDate 容忍 Excel 里常见的几种写法
+func parseDate(v string) (string, bool) {
+	v = strings.TrimSpace(v)
+	for _, layout := range []string{"2006-01-02", "2006/1/2", "2006.01.02", "20060102"} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t.Format("2006-01-02"), true
+		}
+	}
+	return "", false
+}

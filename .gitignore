@@ -1,0 +1,32 @@
+# ============ 凭据与密钥（务必不要提交） ============
+config.yaml
+deploy/config.yaml
+.env
+deploy/.env
+cert/*.key
+deploy/cert/*.key
+*.pem
+
+# ============ 构建产物 ============
+bin/
+*.exe
+*.exe~
+asset-mgr
+asset-mgr-linux
+asset-mgr-darwin
+*.tar.gz
+
+# 前端产物（由 npm run build 生成，会被 go:embed 打进二进制）
+web/dist/
+web/node_modules/
+
+# ============ 运行时数据 ============
+uploads/
+*.log
+
+# ============ 编辑器与系统 ============
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp

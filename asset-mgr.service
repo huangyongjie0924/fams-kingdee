@@ -1,0 +1,20 @@
+[Unit]
+Description=固定资产台账管理系统
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/asset-mgr
+EnvironmentFile=/opt/asset-mgr/.env
+ExecStart=/opt/asset-mgr/asset-mgr -config /opt/asset-mgr/config.yaml
+Restart=always
+RestartSec=10
+# CentOS 7 的 systemd 219 不支持 append:/file: 前缀，日志走 journald：
+#   journalctl -u asset-mgr -f
+StandardOutput=journal
+StandardError=journal
+User=root
+
+[Install]
+WantedBy=multi-user.target

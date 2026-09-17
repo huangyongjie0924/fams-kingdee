@@ -1,0 +1,18 @@
+[Unit]
+Description=固定资产台账管理系统
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/asset-mgr
+EnvironmentFile=/opt/asset-mgr/.env
+ExecStart=/opt/asset-mgr/asset-mgr -config /opt/asset-mgr/config.yaml
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/asset-mgr/asset-mgr.log
+StandardError=append:/opt/asset-mgr/asset-mgr.log
+User=root
+
+[Install]
+WantedBy=multi-user.target
