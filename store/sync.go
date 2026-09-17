@@ -330,9 +330,60 @@ func mergeOwnedFields(dst, src *model.AssetCard) {
 	}
 }
 
+// remember 把一张卡的模拟结果记进 dry-run overlay。
+// overlay 为 nil 时静默跳过，让不关心精确计数的调用方传 nil 走旧行为。
+func remember(overlay map[string]*model.AssetCard, code string, c *model.AssetCard) {
+	if overlay == nil {
+		return
+	}
+	overlay[code] = c
+}
+
+// replayOverlay 在 dry-run 下把新到的一张卡合并进 overlay 里该编码的模拟状态，
+// 返回合并后的状态，以及「相对该编码上一次的模拟状态是否产生了新差异」。
+//
+// 抽成独立函数是为了能被单测直接覆盖——「同编码多行不重复计数」这条规则
+// 全在这里，而它只有在真跑一次同步时才会暴露问题，靠集成测试太慢也太脆。
+//
+// 该编码本次还没模拟过时，基准视为一张空卡（首次调用必然 changed=true，
+// 因为任何真实卡片相对空卡都有内容）。调用方靠这个 ok 判断区分首次与重复。
+func replayOverlay(overlay map[string]*model.AssetCard, c *model.AssetCard) (*model.AssetCard, bool) {
+	sim := overlay[c.AssetCode]
+	if sim == nil {
+		// 不能直接 *sim：nil 指针解引用会 panic。
+		sim = &model.AssetCard{AssetCode: c.AssetCode}
+	}
+	merged := *sim
+	mergeOwnedFields(&merged, c)
+	remember(overlay, c.AssetCode, &merged)
+	return &merged, len(diffCard(sim, &merged)) > 0
+}
+
 // ApplyOwnedCardTx 按资产编码落库一张同步卡：只覆盖金蝶托管字段，
 // 返回 (card_id, created|updated|unchanged)。dryRun 为真时只比对不写库。
-func ApplyOwnedCardTx(tx *sql.Tx, c *model.AssetCard, operator string, dryRun bool) (int64, string, error) {
+//
+// overlay 仅在 dryRun 下使用，键为资产编码，记录本次运行内每张卡"模拟落库后"的样子。
+//
+// 为什么需要它：dry-run 不写库，于是同一编码的多张合并卡会各自与**同一份**旧数据
+// 比对，每比一次都算一次 updated/created，affected 被重复计数——实测 2 倍高估
+// （预测 updated=30 / 实际 15）。有了 overlay，同编码的第二行跟第一行的模拟结果比，
+// 没有新差异就计 unchanged，数字才和实跑对得上。
+//
+// 注意：这段逻辑整段关在 dryRun 分支内，**实跑路径一行都不受影响**。
+func ApplyOwnedCardTx(tx *sql.Tx, c *model.AssetCard, operator string, dryRun bool,
+	overlay map[string]*model.AssetCard) (int64, string, error) {
+
+	// 本次运行内已经模拟过这张卡：跟模拟结果比，而不是跟库里的旧数据比。
+	if dryRun && overlay != nil {
+		if sim, ok := overlay[c.AssetCode]; ok {
+			_, changed := replayOverlay(overlay, c)
+			if changed {
+				return sim.ID, CardActionUpdated, nil
+			}
+			return sim.ID, CardActionUnchanged, nil
+		}
+	}
+
 	var existingID int64
 	err := tx.QueryRow("SELECT id FROM asset_card WHERE asset_code = ?", c.AssetCode).Scan(&existingID)
 	if err != nil && err != sql.ErrNoRows {
@@ -361,6 +412,7 @@ func ApplyOwnedCardTx(tx *sql.Tx, c *model.AssetCard, operator string, dryRun bo
 			action = CardActionUpdated
 		}
 		if dryRun {
+			remember(overlay, c.AssetCode, &merged)
 			return existingID, action, nil
 		}
 
@@ -391,6 +443,9 @@ func ApplyOwnedCardTx(tx *sql.Tx, c *model.AssetCard, operator string, dryRun bo
 	}
 
 	if dryRun {
+		// 模拟新建也要记进 overlay：同编码的第二行不能又算一次 created。
+		sim := *c
+		remember(overlay, c.AssetCode, &sim)
 		return 0, CardActionCreated, nil
 	}
 

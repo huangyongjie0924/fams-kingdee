@@ -41,6 +41,10 @@ type Service struct {
 	// 必须缓存：同步在主事务内新建的主数据对 s.db 上的查询（另一条连接）不可见，
 	// 不缓存会对同一主数据反复新建。仅在持有 mu 的 Run 内使用。
 	resolveCache map[string]int64
+	// dryRunOverlay 记录 dry-run 期间每张卡"模拟落库后"的样子，键为资产编码。
+	// 没有它，同编码的多张合并卡会各自与同一份旧数据比对，affected 被重复计数
+	// （实测 2 倍高估）。仅在 dry-run 且持有 mu 的 Run 内使用。
+	dryRunOverlay map[string]*model.AssetCard
 }
 
 // NewService 创建同步服务。调用方应保证 kingdee 配置完整。
@@ -125,13 +129,14 @@ func (s *Service) Run(ctx context.Context, mode, triggeredBy string) (*model.Syn
 	// 排序后同编号内最后处理的是 modifytime 最新、其次 id 最大的一张，结果可复现。
 	sortCards(cards)
 
-	// dry-run 不写库，同编号的多张合并卡会各自与同一份旧数据比对，
-	// 于是 affected 数量只会高估、不会低估（实测 predicted updated=30 / actual 15）。
-	// 作为上线闸门是安全的，不必强求精确。
+	// dry-run 不写库，同编号的多张合并卡会各自与同一份旧数据比对，重复计数。
+	// dryRunOverlay 让第二次比对跟第一次的模拟结果比，把 affected 数量拉回真实值。
 	s.pendingMasters = nil
 	s.resolveCache = make(map[string]int64)
+	s.dryRunOverlay = nil
 	if s.cfg.Sync.DryRun {
 		s.pendingMasters = make(map[string]bool)
+		s.dryRunOverlay = make(map[string]*model.AssetCard)
 	}
 
 	stats := model.SyncRun{TotalCount: len(cards)}
@@ -260,7 +265,7 @@ func (s *Service) applyOne(tx *sql.Tx, runID int64, src *kingdee.AssetCard) (str
 		return "", mappingErr
 	}
 
-	cardID, action, err := store.ApplyOwnedCardTx(tx, c, syncOperator, s.cfg.Sync.DryRun)
+	cardID, action, err := store.ApplyOwnedCardTx(tx, c, syncOperator, s.cfg.Sync.DryRun, s.dryRunOverlay)
 	if err != nil {
 		return "", err
 	}

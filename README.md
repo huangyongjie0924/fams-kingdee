@@ -43,13 +43,20 @@ cd web && npm install && npm run dev
 ### 金蝶同步预检
 
 ```bash
-# 只比对不写库，看这次同步会影响多少张卡
-go run ./cmd/dryrun -config config.yaml -mode full -dry-run=true
-# 去掉 -dry-run=false 才真的写
+# 只比对不写库，看这次同步会影响多少张卡（默认就是 dry-run）
+go run ./cmd/dryrun -config config.yaml -mode full
+
+# 真的要写的时候显式关掉
+go run ./cmd/dryrun -config config.yaml -mode full -dry-run=false
 ```
 
-> 注意：dry-run 的计数可能和实跑不一致（dry-run 不写库、状态不推进，
-> 同编码重复行的第二次比对会重复计数）。别拿 dry-run 的数字当预期值。
+dry-run 的数字与实跑一致。它内部维护一份「模拟落库后」的 overlay，
+同编码的多张合并卡不会重复计数。
+
+> 此前没有这层 overlay：同一编码的两行会各自与**同一份**旧数据比对，
+> 每比一次都算一次 affected，实测 2 倍高估（预测 `updated=30` / 实际 `15`）。
+> 那个版本作为「上线闸门」是安全的（只会高估不会低估），但作为预检就没用了
+> ——预检的价值全在于数字可信。修复只落在 dry-run 分支内，实跑路径未改动。
 
 ### 星瀚接口字段扫描
 
