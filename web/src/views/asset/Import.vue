@@ -61,7 +61,7 @@
         <el-tab-pane label="批量更新财务信息" name="finance">
           <el-alert type="warning" :closable="false" style="margin-bottom: 16px">
             <div>
-              <b>只更新财务列</b>：原值、累计折旧、残值率(%)、财务使用期限(月)。
+              <b>只更新财务列</b>：含税金额、税额、原值、累计折旧、残值率(%)、财务使用期限(月)。
               文件里其他列（名称、部门、状态、数量…）一律不读，不会覆盖。
             </div>
             <div>

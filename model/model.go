@@ -137,10 +137,16 @@ type AssetCard struct {
 // 可选字段一律用指针，用来区分「这一列要改」和「这一列没填」：
 // 主用法是把导出的整表改完再导回，文件里没填的列绝不能被当成 0 把库里已有值抹掉。
 //
+// 覆盖范围是「财务信息里的金额与数值字段」：含税金额、税额、原值、累计折旧、
+// 残值率、财务使用期限。入账期间/入账时间/财务信息状态不在内（不是金额，且批量改状态
+// 需要单独的确认语义）。数量也不在内：它由星瀚同步托管，手工改了下次同步就没了。
+//
 // 净值不在这里 —— 它是 原值 − 累计折旧 的派生值，由 store 层统一重算，
 // 否则三个数各改各的迟早对不上（这正是本需求要解决的问题）。
 type FinanceUpdate struct {
 	AssetCode         string
+	AmountWithTax     *float64
+	Tax               *float64
 	OriginalValue     *float64
 	AccumDepreciation *float64
 	ResidualRate      *float64

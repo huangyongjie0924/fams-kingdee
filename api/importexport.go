@@ -20,8 +20,8 @@ var importHeaders = []string{
 	"使用公司", "使用部门", "使用人", "管理人", "所属公司", "区域", "存放地点",
 	"购入日期", "使用期限(月)", "来源", "备注",
 	"原值", "累计折旧", "残值率(%)", "财务使用期限(月)", "供应商",
-	// 数量必须追加在末尾：导入是按列下标取值的，插在中间会把后面所有列错位
-	"数量",
+	// 以下三列必须追加在末尾：新增导入是按列下标取值的，插在中间会把后面所有列错位
+	"数量", "含税金额", "税额",
 }
 
 func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +99,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 				c.UseCompanyName, c.UseDeptName, c.UserEmpName, c.ManagerEmpName, c.OwnerCompanyName,
 				c.AreaName, c.Location, c.PurchaseDate, c.UseMonths, c.Source, c.Remark,
 				c.FinOriginalValue, c.FinAccumDepreciaton, c.FinResidualRate, c.FinUseMonths, c.VendorName,
-				c.Quantity,
+				c.Quantity, c.FinAmountWithTax, c.FinTax,
 			}
 			for j, v := range vals {
 				cell, _ := excelize.CoordinatesToCellName(j+1, row)
@@ -193,6 +193,8 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 // 「(%)」「(月)」就整列被静默忽略 —— 静默忽略是这个功能最危险的失败方式。
 var financeHeaderAliases = map[string]string{
 	"资产编码":      "asset_code",
+	"含税金额":      "amount_with_tax",
+	"税额":        "tax",
 	"原值":        "original_value",
 	"累计折旧":      "accum_depreciation",
 	"残值率":       "residual_rate",
@@ -202,9 +204,15 @@ var financeHeaderAliases = map[string]string{
 }
 
 // financeUpdatable 是批量更新真正会写库的列（不含「资产编码」这个定位键）。
-// 只列这四列是刻意的：文件里出现的其他列（名称、部门、状态、数量…）一律不读，
+// 只列这些是刻意的：文件里出现的其他列（名称、部门、状态、数量…）一律不读，
 // 这样「导出整表 → 改金额 → 导回」不会顺手覆盖别的字段。
+//
+// 覆盖「财务信息里的金额与数值字段」全集：含税金额、税额、原值、累计折旧、
+// 残值率、财务使用期限。净值是派生值不在此列（见 store.UpdateCardsFinance）；
+// 数量也不在内 —— 它由星瀚同步托管，手工改了下次同步就没了。
 var financeUpdatable = []struct{ key, label string }{
+	{"amount_with_tax", "含税金额"},
+	{"tax", "税额"},
 	{"original_value", "原值"},
 	{"accum_depreciation", "累计折旧"},
 	{"residual_rate", "残值率(%)"},
@@ -278,8 +286,13 @@ func (s *Server) parseFinanceRows(rows [][]string) ([]model.FinanceUpdate, []imp
 		}
 	}
 	if present == 0 {
+		// 提示语从 financeUpdatable 拼出来，加列时不会忘改这里
+		labels := make([]string, 0, len(financeUpdatable))
+		for _, f := range financeUpdatable {
+			labels = append(labels, f.label)
+		}
 		return nil, []importError{{Row: 1, Column: "表头",
-			Message: "没有任何可更新的财务列（原值 / 累计折旧 / 残值率(%) / 财务使用期限(月)）"}}
+			Message: "没有任何可更新的财务列（" + strings.Join(labels, " / ") + "）"}}
 	}
 
 	var ups []model.FinanceUpdate
@@ -318,6 +331,8 @@ func (s *Server) parseFinanceRows(rows [][]string) ([]model.FinanceUpdate, []imp
 			label string
 			dst   **float64
 		}{
+			{"amount_with_tax", "含税金额", &up.AmountWithTax},
+			{"tax", "税额", &up.Tax},
 			{"original_value", "原值", &up.OriginalValue},
 			{"accum_depreciation", "累计折旧", &up.AccumDepreciation},
 			{"residual_rate", "残值率(%)", &up.ResidualRate},
@@ -494,13 +509,26 @@ func (s *Server) parseImportRows(rows [][]string) ([]model.AssetCard, []importEr
 		}
 		c.VendorID = s.lookupOrErr(&errs, rowNo, "供应商", get(23), s.st.LookupVendorByName)
 
-		// 数量列（第 25 列）是后加的：老模板没有这一列时 get 返回空串，数量保持 0，
-		// 不报错——导入模板的向后兼容就靠这一点。
-		if v := get(24); v != "" {
-			if n, err := strconv.ParseFloat(v, 64); err != nil {
-				errs = append(errs, importError{rowNo, "数量", "不是数字：" + v})
-			} else {
-				c.Quantity = n
+		// 第 25 列起是后追加的金额/数量列：老模板没有这些列时 get 返回空串，
+		// 字段保持零值，不报错——导入模板的向后兼容就靠这一点。
+		for _, f := range []struct {
+			idx   int
+			label string
+			dst   *float64
+		}{
+			{24, "数量", &c.Quantity},
+			{25, "含税金额", &c.FinAmountWithTax},
+			{26, "税额", &c.FinTax},
+		} {
+			if v := get(f.idx); v != "" {
+				n, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					errs = append(errs, importError{rowNo, f.label, "不是数字：" + v})
+				} else if n < 0 {
+					errs = append(errs, importError{rowNo, f.label, "不能为负数：" + v})
+				} else {
+					*f.dst = n
+				}
 			}
 		}
 
