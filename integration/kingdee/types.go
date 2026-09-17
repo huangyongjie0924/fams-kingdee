@@ -54,26 +54,54 @@ type AssetCard struct {
 	FinEntry            []FinEntry  `json:"finentry"`
 }
 
-// FinEntry 是金蝶的「财务信息」明细子表 —— 星瀚侧资产原值 / 累计折旧 / 净值 / 含税金额 /
-// 税额都落在明细表上，finentry 是 Select_AssetCard 返回里唯一承载它的出口。
+// FinEntry 是金蝶的「财务信息」明细子表。星瀚侧资产原值 / 累计折旧 / 净值都落在明细表上，
+// finentry 是 Select_AssetCard 返回里唯一承载它的出口。
 //
-// 实测（2026-09-17，全量 227 行原始响应）：
-//   - finentry 是 48 个返回字段里唯一的嵌套结构，只投影了 fin_originalval / fin_networth 两列
-//   - 有 finentry 的 200 行里，这两列**全部**是 0.0000000000（10 位小数字面量）
-//   - 另外 27 行 finentry 直接是 null（见下方"同编码两行"说明）
+// 星瀚侧 2026-09-17 晚间扩过这个子表的投影：当天 19:18 只有 2 个键
+// （fin_originalval / fin_networth，且全库恒为 0.0000000000），
+// 20:07 再扫已变成 39 个键，真实取值挂在 originalfincard_* 前缀上。
+// 旧的那两个 fin_* 键保留着但仍然是 0 —— 是没接上数据的冗余列，不要用。
 //
-// 也就是说：明细子表的投影列不全、且已有两列的取值没接上真实数据。
-// 因此台账里的金额只能走人工维护（卡片编辑 / Excel 导入），同步不会覆盖。
-// 需求文档见 docs/星瀚接口字段扩展需求.md。
+// 实测（227 行 / 200 张有明细的卡，全部勾稽验证过）：
+//   - originalfincard_originalval  资产原值   200/200 有值，最小 999.08
+//   - originalfincard_accumdepre   累计折旧   200/200 有值
+//   - originalfincard_networth     净值       200/200 有值
+//     且 networth == originalval - accumdepre，200/200 全部成立（口径与台账一致）
+//   - originalfincard_netamount    净额       与 networth 200/200 完全相同（冗余列）
+//   - originalfincard_originalamount 原币原值 有值时为 22 行，取值恒等于 originalval（冗余列）
+//   - originalfincard_incometax    税额       22 行有值，恒等于 originalval × 13%（进项税额），
+//     语义尚未经业务确认，暂不接入
+//   - originalfincard_preusingamount 预计使用期数（月），200/200 有值，取值 24~600 的整数
+//   - originalfincard_preresidualval 预计残值（金额，非比率），194/200 有值
 //
-// 用 json.Number 而不是 float64：星瀚的数值是 10 位小数字面量（如 194.5200000000），
-// 一旦星瀚侧补上真实取值，直接解析成 float64 会先丢一次精度。
+// 用 json.Number 而不是 float64：星瀚的数值是 6~10 位小数字面量（如 359265.080000），
+// 直接解析成 float64 会先丢一次精度。
+//
+// 另有 13 个键在 200 行里恒为空/恒零（fin_depremethod_*、fin_depreuse_*、decval、
+// monthorigvalchg、monthworkload、originaldata、sourcetype 等），需要时再逐个确认语义。
 //
 // 同编码两行：227 行只对应 200 个资产编码 —— 有 27 个编码被返回了两行，两行 id 不同、
-// createtime/modifytime 相同，差异只在 id、finentry（一行有、一行 null）、
-// 以及 5 个编码的 bizstatus（READY 与 ADD 各一行）。我方按 asset_code 落库，重复行会收敛
-// 成一张卡，所以对台账无影响；但这说明接口取数很可能是主表与明细表 join 出来的，需要星瀚侧确认。
+// createtime/modifytime 相同，差异只在 id、finentry（一行有明细、一行 null）、
+// 以及 5 个编码的 bizstatus（READY 与 ADD 各一行）。带明细的那行永远是 id 较小那行（27/27）。
+// 我方按 asset_code 落库，重复行会收敛成一张卡，所以对台账无影响。
 type FinEntry struct {
+	// 资产原值 / 累计折旧 / 净值：台账财务信息的三个金额，已接入同步托管
+	OriginalVal  json.Number `json:"originalfincard_originalval"`
+	AccumDepre   json.Number `json:"originalfincard_accumdepre"`
+	NetWorth     json.Number `json:"originalfincard_networth"`
+	PreUseAmount json.Number `json:"originalfincard_preusingamount"`
+	PreResidual  json.Number `json:"originalfincard_preresidualval"`
+	IncomeTax    json.Number `json:"originalfincard_incometax"`
+
+	// 明细行自身的标识：realcardmasterid 指回资产卡主表 id（200/200 与行的 id 相同），
+	// id 是明细行主键（与行的 id 不同）
+	RealCardMasterID string      `json:"originalfincard_realcardmasterid"`
+	DetailID         string      `json:"originalfincard_id"`
+	FinAccountDate   string      `json:"originalfincard_finaccountdate"`
+	IsNeedDepre      bool        `json:"originalfincard_isneeddepre"`
+	CurrencyRate     json.Number `json:"originalfincard_currencyrate"`
+
+	// 旧投影列：保留只为看清"字段在但值不对"，实际恒为 0，不要读
 	FinOriginalVal json.Number `json:"fin_originalval"`
 	FinNetWorth    json.Number `json:"fin_networth"`
 }

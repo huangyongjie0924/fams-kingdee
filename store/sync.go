@@ -200,19 +200,26 @@ const (
 )
 
 // kingdeeOwnedColumns 外部同步托管（owned）的资产字段，与 ownedCardValues 一一对应。
-// 其余列一律保留本地维护值——序列号、RFID、入库单号、台账金额、税额、分摊部门、
+// 其余列一律保留本地维护值——序列号、RFID、入库单号、税额、分摊部门、
 // 管理人、标签、附件等金蝶接口不提供或不做主，不能被同步清零。
+//
+// 财务信息的金额与数值列（原值 / 累计折旧 / 净值 / 财务使用期限 / 残值率）自
+// 2026-09-17 星瀚补上 finentry 的 originalfincard_* 投影后转为托管：
+// 这三个数本来就该以星瀚为准，人工维护只是接口取不到时的临时方案。
+// 覆盖仍走 mergeOwnedFields 的「大于 0 才覆盖」，所以明细为 null 的重复行不会把值抹成 0。
 var kingdeeOwnedColumns = []string{
 	"name", "category_id", "spec", "unit", "quantity",
 	"use_dept_id", "user_emp_id", "use_status", "area_id", "location",
 	"purchase_date", "card_created_at", "source", "remark", "vendor_id",
 	"status",
 	"fin_asset_type", "owner_company_id", "fin_amount_with_tax",
-	"fin_original_value", "fin_net_value",
+	"fin_original_value", "fin_accum_depreciation", "fin_net_value",
+	"fin_use_months", "fin_residual_rate",
 }
 
-// 新建同步卡时按类别默认值初始化，之后视为本地字段，不再被同步覆盖
-var cardInitColumns = []string{"use_months", "fin_use_months", "fin_residual_rate"}
+// 新建同步卡时按类别默认值初始化，之后视为本地字段，不再被同步覆盖。
+// 注意不能与 kingdeeOwnedColumns 重叠——INSERT 时两组列会被拼在一起，重复列名会报错。
+var cardInitColumns = []string{"use_months"}
 
 func ownedCardValues(c *model.AssetCard) []any {
 	return []any{
@@ -221,8 +228,15 @@ func ownedCardValues(c *model.AssetCard) []any {
 		nullDate(c.PurchaseDate), nullDate(c.CardCreatedAt), c.Source, c.Remark, c.VendorID,
 		statusOrDefault(c.Status),
 		c.FinAssetType, c.OwnerCompanyID, c.FinAmountWithTax,
-		c.FinOriginalValue, c.FinNetValue,
+		c.FinOriginalValue, c.FinAccumDepreciaton, c.FinNetValue,
+		c.FinUseMonths, c.FinResidualRate,
 	}
+}
+
+// cardInitValues 与 cardInitColumns 一一对应。两者必须同步增删：
+// INSERT 时列名与值会被分别拼起来，数目不一致会直接报 SQL 错。
+func cardInitValues(c *model.AssetCard) []any {
+	return []any{c.UseMonths}
 }
 
 // statusOrDefault 金蝶的使用状态没映射出台账枚举时（syncer 留空）落到「闲置」，
@@ -279,19 +293,36 @@ func mergeOwnedFields(dst, src *model.AssetCard) {
 	if src.OwnerCompanyID != 0 {
 		dst.OwnerCompanyID = src.OwnerCompanyID
 	}
-	// 金额类字段星瀚一律给 0，实测已复核：price 恒为 0.000000；财务明细子表 finentry
-	// 有值的 200 行里 fin_originalval / fin_networth 全是 0，另有 27 行 finentry 为 null。
-	// 也就是说这个接口根本取不到资产原值 / 累计折旧 / 净值。
-	// 所以这里只在大于 0 时覆盖，保住台账人工维护（卡片编辑 / Excel 导入）的金额；
-	// 将来星瀚侧把这三个数补进接口返回，这段逻辑不用改就会自动生效。
-	if src.FinAmountWithTax > 0 {
-		dst.FinAmountWithTax = src.FinAmountWithTax
-	}
-	if src.FinOriginalValue > 0 {
-		dst.FinOriginalValue = src.FinOriginalValue
-	}
-	if src.FinNetValue > 0 {
-		dst.FinNetValue = src.FinNetValue
+	// 财务信息整组以「星瀚这次有没有给明细」为准，而不是逐个字段看值：
+	//   - 明细带了（FinEntryPresent）：以星瀚为准，覆盖本地
+	//   - 明细没带（同编码重复行里 finentry 为 null 的那份）：整组跳过，一个字段都不碰
+	//
+	// 为什么不能只看「大于 0 才覆盖」：syncer 会用资产类别的默认使用期限 / 残值率
+	// 预填 FinUseMonths / FinResidualRate，于是"没给明细"的那份重复行带着 240 期 / 5%
+	// 这种非零默认值，正好骗过闸门，把前一行刚同步下来的 107 期 / 3% 又盖回去。
+	// 金额字段没有类别默认值，本来不会被骗，但一起放进这个判断里语义更整齐。
+	//
+	// 仍然保留「大于 0」：星瀚偶尔会给 0（如 6 张卡的预计残值为 0），
+	// 那种情况下不该把本地的值抹成 0。
+	if src.FinEntryPresent {
+		if src.FinAmountWithTax > 0 {
+			dst.FinAmountWithTax = src.FinAmountWithTax
+		}
+		if src.FinOriginalValue > 0 {
+			dst.FinOriginalValue = src.FinOriginalValue
+		}
+		if src.FinAccumDepreciaton > 0 {
+			dst.FinAccumDepreciaton = src.FinAccumDepreciaton
+		}
+		if src.FinNetValue > 0 {
+			dst.FinNetValue = src.FinNetValue
+		}
+		if src.FinUseMonths > 0 {
+			dst.FinUseMonths = src.FinUseMonths
+		}
+		if src.FinResidualRate > 0 {
+			dst.FinResidualRate = src.FinResidualRate
+		}
 	}
 }
 
@@ -362,7 +393,10 @@ func ApplyOwnedCardTx(tx *sql.Tx, c *model.AssetCard, operator string, dryRun bo
 	cols := append([]string{}, kingdeeOwnedColumns...)
 	cols = append(cols, cardInitColumns...)
 	cols = append(cols, "created_by", "ext_json")
-	args := append(ownedCardValues(c), c.UseMonths, c.FinUseMonths, c.FinResidualRate, operator, nullJSON(c.ExtJSON))
+	// 用 cardInitValues 而不是手写值列表：手写时加了一列却忘了加值，
+	// 会变成列数与值数不匹配的 INSERT——而且只有在真的新建卡时才会暴露。
+	args := append(ownedCardValues(c), cardInitValues(c)...)
+	args = append(args, operator, nullJSON(c.ExtJSON))
 	q := fmt.Sprintf("INSERT INTO asset_card (%s) VALUES (%s)", strings.Join(cols, ","), placeholders(len(cols)))
 	res, err := tx.Exec(q, args...)
 	if err != nil {

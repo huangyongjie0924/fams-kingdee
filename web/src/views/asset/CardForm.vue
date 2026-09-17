@@ -206,7 +206,23 @@
           </el-tab-pane>
 
           <el-tab-pane label="财务信息" name="fin">
+            <!-- 金蝶同步来的卡：金额以星瀚为准，改了下次同步就没了，所以置灰只读；
+                 手工新建的卡不在金蝶里，自己维护 -->
             <el-alert
+              v-if="form.synced"
+              type="info"
+              :closable="false"
+              show-icon
+              class="fin-tip"
+              title="原值 / 累计折旧 / 净值 由星瀚同步维护"
+            >
+              <template #default>
+                这三个数取自星瀚资产卡的财务信息明细，每次同步都会以星瀚为准覆盖，因此不可手工修改。
+                <b>净值由星瀚给出</b>，与「原值 − 累计折旧」一致。
+              </template>
+            </el-alert>
+            <el-alert
+              v-else
               type="info"
               :closable="false"
               show-icon
@@ -214,8 +230,7 @@
               title="原值 / 累计折旧 / 净值 由台账人工维护"
             >
               <template #default>
-                星瀚资产卡接口（Select_AssetCard）不返回这三个数（实测 227 张卡恒为 0），
-                所以同步不会覆盖你填的值，请照星瀚界面的数填。
+                手工建的卡不在金蝶里，这三个数自己填。
                 <b>净值自动按「原值 − 累计折旧」计算</b>，不用手填。
               </template>
             </el-alert>
@@ -260,12 +275,38 @@
               </el-col>
               <el-col :span="8">
                 <el-form-item label="原值">
-                  <el-input-number v-model="form.fin_original_value" :min="0" :precision="2" :controls="false" style="width: 100%" />
+                  <el-input-number
+                    v-if="!form.synced"
+                    v-model="form.fin_original_value"
+                    :min="0"
+                    :precision="2"
+                    :controls="false"
+                    style="width: 100%"
+                  />
+                  <el-input
+                    v-else
+                    :model-value="money(form.fin_original_value)"
+                    disabled
+                    title="由金蝶同步，不可编辑"
+                  />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
                 <el-form-item label="累计折旧">
-                  <el-input-number v-model="form.fin_accum_depreciation" :min="0" :precision="2" :controls="false" style="width: 100%" />
+                  <el-input-number
+                    v-if="!form.synced"
+                    v-model="form.fin_accum_depreciation"
+                    :min="0"
+                    :precision="2"
+                    :controls="false"
+                    style="width: 100%"
+                  />
+                  <el-input
+                    v-else
+                    :model-value="money(form.fin_accum_depreciation)"
+                    disabled
+                    title="由金蝶同步，不可编辑"
+                  />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
@@ -275,12 +316,38 @@
               </el-col>
               <el-col :span="8">
                 <el-form-item label="残值率(%)">
-                  <el-input-number v-model="form.fin_residual_rate" :min="0" :max="100" :precision="2" :controls="false" style="width: 100%" />
+                  <el-input-number
+                    v-if="!form.synced"
+                    v-model="form.fin_residual_rate"
+                    :min="0"
+                    :max="100"
+                    :precision="2"
+                    :controls="false"
+                    style="width: 100%"
+                  />
+                  <el-input
+                    v-else
+                    :model-value="String(form.fin_residual_rate ?? '')"
+                    disabled
+                    title="由金蝶同步，不可编辑"
+                  />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
                 <el-form-item label="财务使用期限">
-                  <el-input-number v-model="form.fin_use_months" :min="0" :controls="false" style="width: 100%" />
+                  <el-input-number
+                    v-if="!form.synced"
+                    v-model="form.fin_use_months"
+                    :min="0"
+                    :controls="false"
+                    style="width: 100%"
+                  />
+                  <el-input
+                    v-else
+                    :model-value="String(form.fin_use_months ?? '')"
+                    disabled
+                    title="由金蝶同步，不可编辑"
+                  />
                 </el-form-item>
               </el-col>
               <el-col :span="8">

@@ -110,6 +110,13 @@ type AssetCard struct {
 	FinEntryDate        string  `json:"fin_entry_date"`
 	FinStatus           string  `json:"fin_status"`
 
+	// FinEntryPresent 表示这次同步的金蝶财务明细子表里**确实带了**财务信息。
+	// 不是数据库列，只服务于同步合并，用来区分「星瀚给了值」和「星瀚没给」——
+	// 光看值看不出来：mapCard 会用类别默认值把使用期限/残值率填上，
+	// 于是「没给」的那份重复行带着 240 期 / 5% 的默认值，正好骗过「大于 0 才覆盖」的闸门，
+	// 把前一行刚同步下来的真实值（如 107 期 / 3%）又盖回去。
+	FinEntryPresent bool `json:"-"`
+
 	MtVendorID     int64  `json:"mt_vendor_id"`
 	MtVendorName   string `json:"mt_vendor_name,omitempty"`
 	MtContact      string `json:"mt_contact"`

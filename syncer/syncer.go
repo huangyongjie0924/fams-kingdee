@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -291,9 +292,8 @@ func (s *Service) mapCard(tx *sql.Tx, src *kingdee.AssetCard) (*model.AssetCard,
 	}
 
 	// 只映射金蝶真正提供、且台账托管的字段。
-	// 数量（assetamount）金蝶必给，正常同步；金额类（含税金额 price、财务分录的原值/净值）
-	// 实测全为 0，由 mergeOwnedFields 只在大于 0 时覆盖，避免把人工填的金额抹掉。
-	// 金蝶不返回税额，原始报文一律进 ext_json。
+	// 数量（assetamount）金蝶必给，正常同步；金额类走下面的财务明细子表。
+	// 金蝶不返回税额（incometax 语义待确认），原始报文一律进 ext_json。
 	c := &model.AssetCard{
 		AssetCode: src.Number,
 		Name:      src.AssetName,
@@ -307,13 +307,9 @@ func (s *Service) mapCard(tx *sql.Tx, src *kingdee.AssetCard) (*model.AssetCard,
 		// 金蝶没有独立的「资产类型」字段，按口径用资产类别名称填充；price 大于 0 时才是含税金额
 		FinAmountWithTax: parseAmount(src.Price),
 	}
-	// 财务明细子表：星瀚侧资产原值 / 累计折旧 / 净值都在明细表上，finentry 是唯一出口。
-	// 这里照实解析，但实测 200 行有值的 finentry 里这两列全是 0、另 27 行为 null——
-	// 取值取不到，只能人工维护，详见 store.mergeOwnedFields 与 integration/kingdee/types.go。
-	if len(src.FinEntry) > 0 {
-		c.FinOriginalValue = parseAmount(src.FinEntry[0].FinOriginalVal)
-		c.FinNetValue = parseAmount(src.FinEntry[0].FinNetWorth)
-	}
+	// 财务明细子表的解析放在「类别默认值」之后（见下方），因为星瀚给的值要压过类别默认值。
+	// 顺序反了的话，类别上的 20 年 / 5% 会把星瀚的真实使用期限、残值率盖掉——
+	// 这个坑真踩过一次：房屋类默认 240 期把星瀚的 24 期盖成了 240。
 
 	// 金蝶的 usestatus（使用状态）原样存进 use_status；同时按映射表折算成台账状态枚举，
 	// 折算不出时保持空，由 mergeOwnedFields 保留台账本地状态。金蝶 bizstatus 仍不参与。
@@ -339,12 +335,40 @@ func (s *Service) mapCard(tx *sql.Tx, src *kingdee.AssetCard) (*model.AssetCard,
 	}
 	c.CategoryID = catID
 
-	// 复用类别上的使用期限与残值率（新建时初始化，后续作为本地字段保留）
+	// 复用类别上的使用期限与残值率。这只是「新建卡时的初始值」：
+	// 真正的使用期限 / 残值率以星瀚财务明细为准，由紧接着的明细解析覆盖掉；
+	// use_months 是台账本地的折旧月数，不属于星瀚托管，保持类别默认。
 	if catID > 0 {
 		if months, rate, err := s.st.LookupCategoryMonthsAndRate(catID); err == nil {
 			c.UseMonths = months
 			c.FinUseMonths = months
 			c.FinResidualRate = rate
+		}
+	}
+
+	// 财务明细子表：星瀚侧资产原值 / 累计折旧 / 净值都在明细表上，finentry 是唯一出口。
+	// 注意取值挂在 originalfincard_* 前缀的键上，旧投影列 fin_originalval / fin_networth
+	// 至今仍是 0，读它们等于没读。星瀚侧 2026-09-17 才把投影补齐，详见 kingdee.FinEntry。
+	//
+	// 27 行 finentry 为 null（同编码重复行里 bizstatus=ADD 的那份），这里不解析，
+	// 由 mergeOwnedFields 的「大于 0 才覆盖」保住已有值，避免被 0 抹掉。
+	//
+	// 必须放在类别默认值之后：星瀚给了值就要压过类别默认值。
+	if len(src.FinEntry) > 0 {
+		e := src.FinEntry[0]
+		c.FinEntryPresent = true
+		c.FinOriginalValue = parseAmount(e.OriginalVal)
+		c.FinAccumDepreciaton = parseAmount(e.AccumDepre)
+		c.FinNetValue = parseAmount(e.NetWorth)
+		// 预计使用期数（月）就是台账的「财务使用期限」，24~600 的整数，直接取用。
+		if n := parseAmount(e.PreUseAmount); n > 0 {
+			c.FinUseMonths = int(n)
+		}
+		// 残值率是反算出来的：星瀚只给预计残值（金额），没有给比率。
+		// 不能直接相除就完事——残值金额保留 2 位小数，除出来的比率是 4.999729%~5.00034%
+		// 这种脏值。库列是 DECIMAL(6,3)，四舍五入到 3 位后才会收敛成干净的 5.000 / 3.000。
+		if rv := parseAmount(e.PreResidual); rv > 0 && c.FinOriginalValue > 0 {
+			c.FinResidualRate = math.Round(rv/c.FinOriginalValue*100*1000) / 1000
 		}
 	}
 
