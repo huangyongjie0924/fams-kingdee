@@ -80,6 +80,7 @@
             {{ row.status }}
           </el-tag>
           <a v-else-if="col.prop === 'name'" class="link" @click="openDetail(row)">{{ row.name }}</a>
+          <span v-else-if="col.qty">{{ qty(row[col.prop]) }}</span>
           <span v-else-if="col.money">{{ money(row[col.prop]) }}</span>
           <span v-else>{{ row[col.prop] }}</span>
         </template>
@@ -135,7 +136,7 @@ import {
   Plus, Edit, Delete, Download, Search, Filter, SetUp, Switch, ArrowDown, Camera, Printer,
 } from "@element-plus/icons-vue";
 import http, { download } from "../../api/client";
-import { ASSET_COLUMNS, STATUS_TAG, money } from "../../api/meta";
+import { ASSET_COLUMNS, STATUS_TAG, money, qty } from "../../api/meta";
 import { auth } from "../../stores/auth";
 import { useIsMobile } from "../../composables/useIsMobile";
 import { takeAssetCode } from "../../utils/deeplink";

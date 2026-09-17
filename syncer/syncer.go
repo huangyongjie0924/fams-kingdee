@@ -291,22 +291,27 @@ func (s *Service) mapCard(tx *sql.Tx, src *kingdee.AssetCard) (*model.AssetCard,
 	}
 
 	// 只映射金蝶真正提供、且台账托管的字段。
-	// 金额类（含税金额 price、财务分录的原值/净值）实测全为 0，由 mergeOwnedFields 只在大
-	// 于 0 时覆盖，避免把人工填的金额抹掉。金蝶不返回税额，原始报文一律进 ext_json。
+	// 数量（assetamount）金蝶必给，正常同步；金额类（含税金额 price、财务分录的原值/净值）
+	// 实测全为 0，由 mergeOwnedFields 只在大于 0 时覆盖，避免把人工填的金额抹掉。
+	// 金蝶不返回税额，原始报文一律进 ext_json。
 	c := &model.AssetCard{
-		AssetCode:    src.Number,
-		Name:         src.AssetName,
-		Spec:         src.Model,
-		Unit:         src.UnitName,
+		AssetCode: src.Number,
+		Name:      src.AssetName,
+		Spec:      src.Model,
+		Unit:      src.UnitName,
+		// 星瀚的 assetamount 就是「数量」：房屋按平方米（194.5200000000），设备按台/辆。
+		// 计量单位在 unit_name（平方米 / 台 / 辆），已映射到 c.Unit。
+		Quantity:     parseAmount(src.AssetAmount),
 		Source:       "金蝶同步",
 		FinAssetType: src.AssetCategoryName,
 		// 金蝶没有独立的「资产类型」字段，按口径用资产类别名称填充；price 大于 0 时才是含税金额
 		FinAmountWithTax: parseAmount(src.Price),
 	}
-	// 财务分录子表：实测每张卡最多一条，取第一条即资产原值/净值
+	// 财务分录子表：实测每张卡最多一条。这里照实解析，但星瀚全库给的都是 0——
+	// 资产原值 / 累计折旧 / 净值取不到，只能人工维护，详见 store.mergeOwnedFields。
 	if len(src.FinEntry) > 0 {
-		c.FinOriginalValue = src.FinEntry[0].FinOriginalVal
-		c.FinNetValue = src.FinEntry[0].FinNetWorth
+		c.FinOriginalValue = parseAmount(src.FinEntry[0].FinOriginalVal)
+		c.FinNetValue = parseAmount(src.FinEntry[0].FinNetWorth)
 	}
 
 	// 金蝶的 usestatus（使用状态）原样存进 use_status；同时按映射表折算成台账状态枚举，

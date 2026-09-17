@@ -17,6 +17,7 @@
           <el-descriptions-item label="规格型号">{{ card.spec }}</el-descriptions-item>
           <el-descriptions-item label="设备序列号">{{ card.serial_no }}</el-descriptions-item>
           <el-descriptions-item label="计量单位">{{ card.unit }}</el-descriptions-item>
+          <el-descriptions-item label="数量">{{ qty(card.quantity) }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="STATUS_TAG[card.status] || 'info'" size="small">{{ card.status }}</el-tag>
           </el-descriptions-item>
@@ -84,6 +85,7 @@
           <el-descriptions-item label="分摊部门">{{ card.fin_share_dept_name }}</el-descriptions-item>
           <el-descriptions-item label="供应商">{{ card.vendor_name }}</el-descriptions-item>
           <el-descriptions-item label="含税金额">{{ money(card.fin_amount_with_tax) }}</el-descriptions-item>
+          <el-descriptions-item label="数量">{{ qty(card.quantity) }}</el-descriptions-item>
           <el-descriptions-item label="税额">{{ money(card.fin_tax) }}</el-descriptions-item>
           <el-descriptions-item label="原值">{{ money(card.fin_original_value) }}</el-descriptions-item>
           <el-descriptions-item label="累计折旧">{{ money(card.fin_accum_depreciation) }}</el-descriptions-item>
@@ -133,7 +135,7 @@ import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Printer } from "@element-plus/icons-vue";
 import http from "../../api/client";
-import { STATUS_TAG, money } from "../../api/meta";
+import { STATUS_TAG, money, qty } from "../../api/meta";
 import { auth } from "../../stores/auth";
 import { useIsMobile } from "../../composables/useIsMobile";
 

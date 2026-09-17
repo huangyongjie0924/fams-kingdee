@@ -123,6 +123,9 @@ func validateCard(c *model.AssetCard) string {
 	if c.Amount < 0 || c.FinOriginalValue < 0 {
 		return "金额不能为负数"
 	}
+	if c.Quantity < 0 {
+		return "数量不能为负数"
+	}
 	if c.FinNetValue == 0 && c.FinOriginalValue > 0 {
 		c.FinNetValue = c.FinOriginalValue - c.FinAccumDepreciaton
 	}

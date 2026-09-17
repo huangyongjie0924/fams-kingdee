@@ -203,7 +203,7 @@ const (
 // 其余列一律保留本地维护值——序列号、RFID、入库单号、台账金额、税额、分摊部门、
 // 管理人、标签、附件等金蝶接口不提供或不做主，不能被同步清零。
 var kingdeeOwnedColumns = []string{
-	"name", "category_id", "spec", "unit",
+	"name", "category_id", "spec", "unit", "quantity",
 	"use_dept_id", "user_emp_id", "use_status", "area_id", "location",
 	"purchase_date", "card_created_at", "source", "remark", "vendor_id",
 	"status",
@@ -216,7 +216,7 @@ var cardInitColumns = []string{"use_months", "fin_use_months", "fin_residual_rat
 
 func ownedCardValues(c *model.AssetCard) []any {
 	return []any{
-		c.Name, c.CategoryID, c.Spec, c.Unit,
+		c.Name, c.CategoryID, c.Spec, c.Unit, c.Quantity,
 		c.UseDeptID, c.UserEmpID, c.UseStatus, c.AreaID, c.Location,
 		nullDate(c.PurchaseDate), nullDate(c.CardCreatedAt), c.Source, c.Remark, c.VendorID,
 		statusOrDefault(c.Status),
@@ -242,6 +242,9 @@ func mergeOwnedFields(dst, src *model.AssetCard) {
 	dst.Name = src.Name
 	dst.CategoryID = src.CategoryID
 	dst.Unit = src.Unit
+	// 数量是星瀚的强字段：assetamount 全库 227 张卡都有值，直接覆盖不做「>0 才写」的
+	// 保护——星瀚里就是 0 的资产，台账也该显示 0，否则两边永远对不上。
+	dst.Quantity = src.Quantity
 	dst.UseDeptID = src.UseDeptID
 	dst.UserEmpID = src.UserEmpID
 	dst.UseStatus = src.UseStatus
@@ -273,8 +276,11 @@ func mergeOwnedFields(dst, src *model.AssetCard) {
 	if src.OwnerCompanyID != 0 {
 		dst.OwnerCompanyID = src.OwnerCompanyID
 	}
-	// 金蝶的金额类字段（含税金额 price、财务分录的 fin_originalval/fin_networth）实测全为 0：
-	// 只在大于 0 时覆盖，避免把人工填写的金额抹掉。
+	// 金额类字段星瀚一律给 0，实测已复核：price 恒为 0.000000；财务分录 finentry 有值的
+	// 200 张卡里 fin_originalval / fin_networth 全是 0，另有 27 张 finentry 直接是空数组。
+	// 也就是说这个接口根本取不到资产原值 / 累计折旧 / 净值。
+	// 所以这里只在大于 0 时覆盖，保住台账人工维护（卡片编辑 / Excel 导入）的金额；
+	// 将来星瀚侧把这三个数补进接口返回，这段逻辑不用改就会自动生效。
 	if src.FinAmountWithTax > 0 {
 		dst.FinAmountWithTax = src.FinAmountWithTax
 	}

@@ -52,6 +52,11 @@ func (s *Store) migrate() error {
 	if err := s.addColumnIfMissing("asset_card", "card_created_at", "DATETIME DEFAULT NULL"); err != nil {
 		return err
 	}
+	// 数量列：金蝶 assetamount（如房屋 194.5200 平方米）。金蝶给 10 位小数，
+	// 取 4 位与星瀚界面显示口径一致；金额列维持 2 位不受影响。
+	if err := s.addColumnIfMissing("asset_card", "quantity", "DECIMAL(18,4) NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	// 「只读」账号按 user_emp_id 收窄列表，这列原本没索引，不加就是全表扫
 	if err := s.createIndexIfMissing("asset_card", "idx_card_user", "(user_emp_id)"); err != nil {
 		return err
@@ -250,6 +255,7 @@ var schema = []string{
 		unit VARCHAR(16) NOT NULL DEFAULT '',
 		status VARCHAR(16) NOT NULL DEFAULT '闲置',
 		amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+		quantity DECIMAL(18,4) NOT NULL DEFAULT 0,
 		use_company_id BIGINT NOT NULL DEFAULT 0,
 		use_dept_id BIGINT NOT NULL DEFAULT 0,
 		user_emp_id BIGINT NOT NULL DEFAULT 0,

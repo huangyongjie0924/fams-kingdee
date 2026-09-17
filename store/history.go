@@ -33,6 +33,7 @@ func diffCard(old, cur *model.AssetCard) []fieldDiff {
 	cmp("计量单位", old.Unit, cur.Unit)
 	cmp("状态", old.Status, cur.Status)
 	cmp("金额", num(old.Amount), num(cur.Amount))
+	cmp("数量", num(old.Quantity), num(cur.Quantity))
 	cmp("使用公司", i64s(old.UseCompanyID), i64s(cur.UseCompanyID))
 	cmp("使用部门", i64s(old.UseDeptID), i64s(cur.UseDeptID))
 	cmp("使用人", i64s(old.UserEmpID), i64s(cur.UserEmpID))

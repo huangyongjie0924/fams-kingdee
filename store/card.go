@@ -10,7 +10,7 @@ import (
 )
 
 const cardSelect = `SELECT c.id, c.asset_code, c.name, c.category_id, cat.name,
-	c.spec, c.serial_no, c.unit, c.status, c.amount,
+	c.spec, c.serial_no, c.unit, c.status, c.amount, c.quantity,
 	c.use_company_id, uc.name, c.use_dept_id, ud.name, c.user_emp_id, ue.name, c.use_status,
 	c.manager_emp_id, me.name, c.owner_company_id, oc.name, c.area_id, ar.name,
 	c.location, c.purchase_date, c.card_created_at, c.use_months, c.source, c.in_stock_no, c.rfid, c.remark,
@@ -217,7 +217,7 @@ func scanCard(r rowScanner) (*model.AssetCard, error) {
 
 	err := r.Scan(
 		&c.ID, &c.AssetCode, &c.Name, &c.CategoryID, &catName,
-		&c.Spec, &c.SerialNo, &c.Unit, &c.Status, &c.Amount,
+		&c.Spec, &c.SerialNo, &c.Unit, &c.Status, &c.Amount, &c.Quantity,
 		&c.UseCompanyID, &ucName, &c.UseDeptID, &udName, &c.UserEmpID, &ueName, &c.UseStatus,
 		&c.ManagerEmpID, &meName, &c.OwnerCompanyID, &ocName, &c.AreaID, &arName,
 		&c.Location, &purchaseDate, &cardCreatedAt, &c.UseMonths, &c.Source, &c.InStockNo, &c.RFID, &c.Remark,
@@ -404,7 +404,7 @@ func (s *Store) attachTags(items []model.AssetCard, ids []int64) error {
 
 // cardWriteColumns 与 cardWriteArgs 必须一一对应
 var cardWriteColumns = []string{
-	"asset_code", "name", "category_id", "spec", "serial_no", "unit", "status", "amount",
+	"asset_code", "name", "category_id", "spec", "serial_no", "unit", "status", "amount", "quantity",
 	"use_company_id", "use_dept_id", "user_emp_id", "manager_emp_id",
 	"owner_company_id", "area_id", "location", "purchase_date", "use_months",
 	"source", "in_stock_no", "rfid", "remark",
@@ -416,7 +416,7 @@ var cardWriteColumns = []string{
 
 func cardWriteArgs(c *model.AssetCard) []any {
 	return []any{
-		c.AssetCode, c.Name, c.CategoryID, c.Spec, c.SerialNo, c.Unit, c.Status, c.Amount,
+		c.AssetCode, c.Name, c.CategoryID, c.Spec, c.SerialNo, c.Unit, c.Status, c.Amount, c.Quantity,
 		c.UseCompanyID, c.UseDeptID, c.UserEmpID, c.ManagerEmpID,
 		c.OwnerCompanyID, c.AreaID, c.Location, nullDate(c.PurchaseDate), c.UseMonths,
 		c.Source, c.InStockNo, c.RFID, c.Remark,

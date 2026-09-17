@@ -4,6 +4,9 @@ export interface ColumnMeta {
   width?: number;
   align?: "left" | "right" | "center";
   money?: boolean;
+  // 数量列用 qty 而不是 money：数量是 4 位小数的计量值（194.52 平方米、1 台），
+  // 套金额的两位小数会把「1 台」显示成「1.00」
+  qty?: boolean;
   defaultOn: boolean;
 }
 
@@ -16,6 +19,7 @@ export const ASSET_COLUMNS: ColumnMeta[] = [
   { prop: "spec", label: "规格型号", width: 150, defaultOn: true },
   { prop: "serial_no", label: "设备序列号", width: 140, defaultOn: false },
   { prop: "unit", label: "计量单位", width: 90, defaultOn: false },
+  { prop: "quantity", label: "数量", width: 110, align: "right", qty: true, defaultOn: true },
   { prop: "amount", label: "金额", width: 120, align: "right", money: true, defaultOn: true },
   { prop: "use_company_name", label: "使用公司", width: 140, defaultOn: true },
   { prop: "use_dept_name", label: "使用部门", width: 140, defaultOn: true },
@@ -51,7 +55,17 @@ export function money(v: number | string | null | undefined): string {
   return n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// 数量最多 4 位小数（对齐星瀚），末尾多余的 0 去掉：
+// 194.52 平方米 → 194.52，1 台 → 1，而不是 194.5200 / 1.0000
+export function qty(v: number | string | null | undefined): string {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString("zh-CN", { maximumFractionDigits: 4 });
+}
+
 // 提交给后端的字段白名单：后端开了 DisallowUnknownFields，多一个键就 400
+// 注意 quantity 故意不在这里：数量由金蝶 assetamount 同步托管，卡片表单只读展示，
+// 提交上去也会被下一次同步覆盖，不如干脆不提交。
 export const CARD_SUBMIT_FIELDS = [
   "asset_code", "name", "category_id", "spec", "serial_no", "unit", "status", "amount",
   "use_company_id", "use_dept_id", "user_emp_id", "use_status", "manager_emp_id",

@@ -57,6 +57,12 @@
                 </el-form-item>
               </el-col>
               <el-col :span="8">
+                <!-- 数量由金蝶 assetamount 同步托管，每次同步直接覆盖，所以这里只读 -->
+                <el-form-item label="数量">
+                  <el-input :model-value="qty(form.quantity)" disabled />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
                 <el-form-item label="状态">
                   <el-select v-model="form.status" style="width: 100%">
                     <el-option v-for="s in md.enums.statuses" :key="s" :label="s" :value="s" />
@@ -186,6 +192,19 @@
           </el-tab-pane>
 
           <el-tab-pane label="财务信息" name="fin">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              class="fin-tip"
+              title="原值 / 累计折旧 / 净值 由台账人工维护"
+            >
+              <template #default>
+                星瀚资产卡接口（Select_AssetCard）不返回这三个数（实测 227 张卡恒为 0），
+                所以同步不会覆盖你填的值，请照星瀚界面的数填。
+                <b>净值自动按「原值 − 累计折旧」计算</b>，不用手填。
+              </template>
+            </el-alert>
             <el-row :gutter="16">
               <el-col :span="8">
                 <el-form-item label="资产类型">
@@ -324,7 +343,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ArrowLeft, Plus } from "@element-plus/icons-vue";
 import http from "../../api/client";
-import { money, pickSubmit } from "../../api/meta";
+import { money, pickSubmit, qty } from "../../api/meta";
 import { useIsMobile } from "../../composables/useIsMobile";
 import DateSelect from "../../components/DateSelect.vue";
 
@@ -346,7 +365,7 @@ const md = ref<any>({
 });
 
 const form = ref<Record<string, any>>({
-  asset_code: "", name: "", category_id: null, spec: "", serial_no: "", unit: "",
+  asset_code: "", name: "", category_id: null, spec: "", serial_no: "", unit: "", quantity: 0,
   status: "闲置", amount: 0, use_company_id: null, use_dept_id: null, user_emp_id: null,
   use_status: "", manager_emp_id: null, owner_company_id: null, area_id: null, location: "",
   purchase_date: "", use_months: 0, source: "", in_stock_no: "", rfid: "", remark: "",
@@ -480,5 +499,10 @@ onMounted(async () => {
 .title {
   font-size: 15px;
   font-weight: 600;
+}
+
+/* 财务信息页签顶部那条「人工维护」说明，别贴到下面的表单上 */
+.fin-tip {
+  margin-bottom: 16px;
 }
 </style>

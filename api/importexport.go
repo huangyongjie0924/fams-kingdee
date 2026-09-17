@@ -19,6 +19,8 @@ var importHeaders = []string{
 	"使用公司", "使用部门", "使用人", "管理人", "所属公司", "区域", "存放地点",
 	"购入日期", "使用期限(月)", "来源", "备注",
 	"原值", "累计折旧", "残值率(%)", "财务使用期限(月)", "供应商",
+	// 数量必须追加在末尾：导入是按列下标取值的，插在中间会把后面所有列错位
+	"数量",
 }
 
 func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +43,8 @@ func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request) {
 	f.SetCellValue(sheet, "B2", "示例：戴尔笔记本电脑")
 	f.SetCellValue(sheet, "C2", "电子产品及通信设备")
 	f.SetCellValue(sheet, "P2", "2026-01-15")
+	// 数量是最后一列（第 25 列 = Y），放个样例提示格式
+	f.SetCellValue(sheet, "Y2", "194.52")
 
 	writeXLSX(w, f, "资产导入模板.xlsx")
 }
@@ -94,6 +98,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 				c.UseCompanyName, c.UseDeptName, c.UserEmpName, c.ManagerEmpName, c.OwnerCompanyName,
 				c.AreaName, c.Location, c.PurchaseDate, c.UseMonths, c.Source, c.Remark,
 				c.FinOriginalValue, c.FinAccumDepreciaton, c.FinResidualRate, c.FinUseMonths, c.VendorName,
+				c.Quantity,
 			}
 			for j, v := range vals {
 				cell, _ := excelize.CoordinatesToCellName(j+1, row)
@@ -291,6 +296,16 @@ func (s *Server) parseImportRows(rows [][]string) ([]model.AssetCard, []importEr
 			}
 		}
 		c.VendorID = s.lookupOrErr(&errs, rowNo, "供应商", get(23), s.st.LookupVendorByName)
+
+		// 数量列（第 25 列）是后加的：老模板没有这一列时 get 返回空串，数量保持 0，
+		// 不报错——导入模板的向后兼容就靠这一点。
+		if v := get(24); v != "" {
+			if n, err := strconv.ParseFloat(v, 64); err != nil {
+				errs = append(errs, importError{rowNo, "数量", "不是数字：" + v})
+			} else {
+				c.Quantity = n
+			}
+		}
 
 		c.FinStatus = "未入账"
 		c.FinNetValue = c.FinOriginalValue - c.FinAccumDepreciaton

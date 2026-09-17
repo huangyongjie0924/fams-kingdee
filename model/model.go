@@ -36,6 +36,10 @@ type AssetCard struct {
 	Unit     string  `json:"unit"`
 	Status   string  `json:"status"`
 	Amount   float64 `json:"amount"`
+	// Quantity 是金蝶的 assetamount：带计量单位的数量——房屋按平方米、设备按台/辆。
+	// 与 Amount（台账自填的金额）完全是两回事，取值由金蝶同步托管，人工不可改。
+	// 金蝶返回 10 位小数（如 194.5200000000），库里按 DECIMAL(18,4) 存。
+	Quantity float64 `json:"quantity"`
 
 	UseCompanyID   int64  `json:"use_company_id"`
 	UseCompanyName string `json:"use_company_name,omitempty"`
