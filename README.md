@@ -8,6 +8,24 @@
 - 前端：Vue 3 + Element Plus + Vite，产物用 `go:embed` 打进二进制
 - 数据库：MySQL 8.0，库名 `asset`，13 张表启动时自动建
 
+## 首次拉取后
+
+仓库不含凭据与构建产物，克隆后需补三步：
+
+```bash
+# 1. 配置：模板 → 实际配置，填入数据库密码和 jwt_secret
+cp config.example.yaml config.yaml
+#    （config.yaml / .env / cert/*.key 均被 .gitignore 排除，不会误提交）
+
+# 2. 前端依赖
+cd web && npm install
+
+# 3. 证书：cert/server.crt 与 cert/server.key（HTTPS 用，key 权限 600）
+```
+
+注意 `go build` 依赖 `web/dist`（`main.go` 里是 `go:embed all:web/dist`），
+**必须先 `npm run build` 再编译**，否则报 `pattern all:web/dist: no matching files found`。
+
 ## 本地开发
 
 ```bash
