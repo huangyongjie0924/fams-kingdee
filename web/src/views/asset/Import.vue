@@ -74,7 +74,7 @@
 
           <div class="fin-step">
             <el-button :icon="Download" @click="downloadExport">① 导出当前资产清单</el-button>
-            <span class="hint">在导出的表里改「原值 / 累计折旧」，保存后从下面上传</span>
+            <span class="hint">在导出的表里改上面那几个财务列，保存后从下面上传</span>
           </div>
 
           <el-upload
