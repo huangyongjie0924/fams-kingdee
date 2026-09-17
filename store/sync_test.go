@@ -100,3 +100,47 @@ func TestMergeOwnedFieldsTakesFinanceFromFinEntry(t *testing.T) {
 		t.Errorf("残值率未按星瀚覆盖：期望 3，得到 %v", dst.FinResidualRate)
 	}
 }
+
+// TestMergeOwnedFieldsTaxOnlyWhenPresent 守住含税金额 / 税额的「部分覆盖」语义。
+//
+// 星瀚只对 22/200 张卡提供税额，其余 178 张是空（不是 0）。
+// 那 178 张的含税金额必须保持人工维护——不能因为税额是 0 就把
+// 「含税金额 = 原值」写进去，那 178 张的原值未必是含税口径。
+func TestMergeOwnedFieldsTaxOnlyWhenPresent(t *testing.T) {
+	t.Run("星瀚给了税额", func(t *testing.T) {
+		dst := &model.AssetCard{}
+		src := &model.AssetCard{
+			FinEntryPresent:  true,
+			FinOriginalValue: 5574.34,
+			FinTax:           724.66,
+			FinAmountWithTax: 6299.00, // 原值 + 税额
+		}
+		mergeOwnedFields(dst, src)
+		if dst.FinTax != 724.66 {
+			t.Errorf("税额未落库：期望 724.66，得到 %v", dst.FinTax)
+		}
+		if dst.FinAmountWithTax != 6299.00 {
+			t.Errorf("含税金额未落库：期望 6299.00，得到 %v", dst.FinAmountWithTax)
+		}
+	})
+
+	t.Run("星瀚没给税额", func(t *testing.T) {
+		dst := &model.AssetCard{FinAmountWithTax: 8888.88, FinTax: 999.99} // 人工填的
+		src := &model.AssetCard{
+			FinEntryPresent:  true,
+			FinOriginalValue: 359265.08,
+			FinTax:           0,
+			FinAmountWithTax: 0,
+		}
+		mergeOwnedFields(dst, src)
+		if dst.FinTax != 999.99 {
+			t.Errorf("税额被抹掉了：期望保留 999.99，得到 %v", dst.FinTax)
+		}
+		if dst.FinAmountWithTax != 8888.88 {
+			t.Errorf("含税金额被抹掉了：期望保留 8888.88，得到 %v", dst.FinAmountWithTax)
+		}
+		if dst.FinOriginalValue != 359265.08 {
+			t.Errorf("原值该照常覆盖：期望 359265.08，得到 %v", dst.FinOriginalValue)
+		}
+	})
+}

@@ -38,6 +38,34 @@ cd web && npm install && npm run dev
 
 前端 dev 地址 http://localhost:5173，后端 http://localhost:8080。
 
+## 诊断命令
+
+### 金蝶同步预检
+
+```bash
+# 只比对不写库，看这次同步会影响多少张卡
+go run ./cmd/dryrun -config config.yaml -mode full -dry-run=true
+# 去掉 -dry-run=false 才真的写
+```
+
+> 注意：dry-run 的计数可能和实跑不一致（dry-run 不写库、状态不推进，
+> 同编码重复行的第二次比对会重复计数）。别拿 dry-run 的数字当预期值。
+
+### 星瀚接口字段扫描
+
+```bash
+go run ./cmd/kdscan -config config.yaml
+```
+
+拉全量、列出所有字段与取值分布、展开 `finentry` 明细子表的全部键、统计同编码重复行。
+怀疑「字段取不到值 / 金额对不上」时先跑它。
+
+> **为什么需要它**：星瀚侧改接口投影是**静默的**。2026-09-17 当天 19:18 扫到
+> `finentry` 只有 2 个键且全库恒为 0，20:07 再扫已变成 39 个键、真实取值挂在
+> `originalfincard_*` 前缀上——两次之间没有任何通知。
+> 所以「字段取不到值」的第一反应是**重扫**，而不是翻旧结论。
+> 详见 `docs/星瀚接口字段扩展需求.md`。
+
 ## 构建与部署
 
 ```bash

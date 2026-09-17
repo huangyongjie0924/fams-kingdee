@@ -212,7 +212,7 @@ var kingdeeOwnedColumns = []string{
 	"use_dept_id", "user_emp_id", "use_status", "area_id", "location",
 	"purchase_date", "card_created_at", "source", "remark", "vendor_id",
 	"status",
-	"fin_asset_type", "owner_company_id", "fin_amount_with_tax",
+	"fin_asset_type", "owner_company_id", "fin_amount_with_tax", "fin_tax",
 	"fin_original_value", "fin_accum_depreciation", "fin_net_value",
 	"fin_use_months", "fin_residual_rate",
 }
@@ -227,7 +227,7 @@ func ownedCardValues(c *model.AssetCard) []any {
 		c.UseDeptID, c.UserEmpID, c.UseStatus, c.AreaID, c.Location,
 		nullDate(c.PurchaseDate), nullDate(c.CardCreatedAt), c.Source, c.Remark, c.VendorID,
 		statusOrDefault(c.Status),
-		c.FinAssetType, c.OwnerCompanyID, c.FinAmountWithTax,
+		c.FinAssetType, c.OwnerCompanyID, c.FinAmountWithTax, c.FinTax,
 		c.FinOriginalValue, c.FinAccumDepreciaton, c.FinNetValue,
 		c.FinUseMonths, c.FinResidualRate,
 	}
@@ -302,11 +302,15 @@ func mergeOwnedFields(dst, src *model.AssetCard) {
 	// 这种非零默认值，正好骗过闸门，把前一行刚同步下来的 107 期 / 3% 又盖回去。
 	// 金额字段没有类别默认值，本来不会被骗，但一起放进这个判断里语义更整齐。
 	//
-	// 仍然保留「大于 0」：星瀚偶尔会给 0（如 6 张卡的预计残值为 0），
-	// 那种情况下不该把本地的值抹成 0。
+	// 仍然保留「大于 0」：星瀚偶尔会给 0 或干脆没填，
+	// 那种情况下不该把本地的值抹成 0。含税金额 / 税额尤其如此——
+	// 星瀚只对 22/200 张卡提供了税额，其余 178 张的这两个字段仍归人工维护。
 	if src.FinEntryPresent {
 		if src.FinAmountWithTax > 0 {
 			dst.FinAmountWithTax = src.FinAmountWithTax
+		}
+		if src.FinTax > 0 {
+			dst.FinTax = src.FinTax
 		}
 		if src.FinOriginalValue > 0 {
 			dst.FinOriginalValue = src.FinOriginalValue
