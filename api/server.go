@@ -87,6 +87,8 @@ func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/assets/export", s.handleExport)
 	mux.HandleFunc("GET /api/assets/import-template", s.handleImportTemplate)
 	mux.HandleFunc("POST /api/assets/import", s.requirePerm(model.PermAssetManage, s.handleImport))
+	// 批量更新财务信息：与新增导入分开的入口。编码必须已存在，只改财务列。
+	mux.HandleFunc("POST /api/assets/import-fin", s.requirePerm(model.PermAssetManage, s.handleImportFinance))
 
 	mux.HandleFunc("POST /api/upload", s.requirePerm(model.PermAssetManage, s.handleUpload))
 	mux.HandleFunc("GET /api/assets/{id}/attachments", s.handleListAttachments)

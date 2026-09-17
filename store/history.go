@@ -8,18 +8,20 @@ import (
 	"asset-mgr/model"
 )
 
-type fieldDiff struct {
-	Field string
-	Old   string
-	New   string
+// FieldChange 是一处字段变化。历史表和「批量更新预检」共用它：
+// 同一个 diffCard 既写履历、又回给前端预览，两边看到的字段名与旧新值保证一致。
+type FieldChange struct {
+	Field string `json:"field"`
+	Old   string `json:"old"`
+	New   string `json:"new"`
 }
 
 // diffCard 逐字段比对，历史里存中文字段名，直接给人看
-func diffCard(old, cur *model.AssetCard) []fieldDiff {
-	var out []fieldDiff
+func diffCard(old, cur *model.AssetCard) []FieldChange {
+	var out []FieldChange
 	cmp := func(label, o, n string) {
 		if o != n {
-			out = append(out, fieldDiff{Field: label, Old: o, New: n})
+			out = append(out, FieldChange{Field: label, Old: o, New: n})
 		}
 	}
 	num := func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }

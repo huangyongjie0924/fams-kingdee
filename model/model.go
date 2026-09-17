@@ -132,6 +132,21 @@ type AssetCard struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// FinanceUpdate 是「批量更新财务信息」里的一行输入。
+//
+// 可选字段一律用指针，用来区分「这一列要改」和「这一列没填」：
+// 主用法是把导出的整表改完再导回，文件里没填的列绝不能被当成 0 把库里已有值抹掉。
+//
+// 净值不在这里 —— 它是 原值 − 累计折旧 的派生值，由 store 层统一重算，
+// 否则三个数各改各的迟早对不上（这正是本需求要解决的问题）。
+type FinanceUpdate struct {
+	AssetCode         string
+	OriginalValue     *float64
+	AccumDepreciation *float64
+	ResidualRate      *float64
+	FinUseMonths      *int
+}
+
 // ListQuery 列表查询条件。Sort 与筛选字段都经过白名单映射，不直接拼进 SQL。
 type ListQuery struct {
 	Keyword      string
