@@ -82,6 +82,10 @@ func main() {
 	cfgPath := flag.String("config", "config.yaml", "配置文件")
 	rawPrefix := flag.String("raw", "", "原始响应落盘前缀（每页一个文件），留空则不落盘")
 	target := flag.String("code", "12020302000003", "重点展开的资产编码")
+	baselinePath := flag.String("baseline", "docs/kingdee-fields-baseline.json",
+		"字段指纹基线；文件不存在时自动创建")
+	updateBaseline := flag.Bool("update", false, "用本次扫描覆盖基线（默认只对比不写）")
+	verbose := flag.Bool("v", false, "连仅有计数变化的字段一起打印")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)
@@ -135,8 +139,15 @@ func main() {
 		}
 		if *rawPrefix != "" {
 			name := fmt.Sprintf("%s.page%d", *rawPrefix, page)
-			_ = os.WriteFile(name, raw, 0o644)
-			fmt.Println("原始响应已写入", name, len(raw), "字节")
+			// 必须检查错误：这里原先写的是 `_ = os.WriteFile(...)`，
+			// 于是传了 Git Bash 风格的 /tmp/xxx 时（Go 是 Windows 程序，
+			// 会解析成 D:\tmp\xxx）落盘失败也一声不吭，人还以为拿到了原始报文。
+			// 静默失败比报错危险得多——尤其这个工具的用途就是"别信记忆，去看原始数据"。
+			if err := os.WriteFile(name, raw, 0o644); err != nil {
+				fmt.Printf("原始响应落盘失败 %s: %v\n", name, err)
+			} else {
+				fmt.Println("原始响应已写入", name, len(raw), "字节")
+			}
 		}
 
 		var top struct {
@@ -164,6 +175,16 @@ func main() {
 		}
 	}
 	fmt.Printf("扫描时间 %s，合计 %d 行\n", time.Now().Format("2006-01-02 15:04:05"), len(rows))
+
+	// 本次扫描的指纹：只记「字段在不在、有没有非零值」，供下次扫描比对。
+	// 为什么要这个：星瀚改投影是静默的，而人的记忆不可靠——
+	// 本轮就是拿 19:18 的快照去判断 20:07 的接口，白白绕了一圈。
+	fp := &fingerprint{
+		ScannedAt: time.Now().Format("2006-01-02 15:04:05"),
+		Rows:      len(rows),
+		Fields:    map[string]fieldFP{},
+		Nested:    map[string]map[string]fieldFP{},
+	}
 
 	// ---- 3) 顶层字段清单 ----
 	type stat struct {
@@ -227,6 +248,7 @@ func main() {
 	fmt.Printf("%-30s %-7s %6s %6s %6s %7s  %s\n", "字段名", "类型", "出现", "非空", "非零", "取值数", "样例")
 	for _, k := range order {
 		s := stats[k]
+		fp.Fields[k] = fieldFP{Kind: s.kind, Present: s.present, NonZero: s.nonZero}
 		fmt.Printf("%-30s %-7s %6d %6d %6d %7d  %s\n",
 			k, s.kind, s.present, s.nonEmpty, s.nonZero, len(s.distinct), s.sample)
 	}
@@ -244,6 +266,7 @@ func main() {
 	}
 	for _, nk := range nestedKeys {
 		type sub struct {
+			kind             string
 			present, nonZero int
 			sample           string
 			distinct         map[string]bool
@@ -276,7 +299,14 @@ func main() {
 				for k, val := range em {
 					s, ok := subs[k]
 					if !ok {
-						s = &sub{distinct: map[string]bool{}}
+						kind := "scalar"
+						switch val.(type) {
+						case []any:
+							kind = "array"
+						case map[string]any:
+							kind = "object"
+						}
+						s = &sub{kind: kind, distinct: map[string]bool{}}
 						subs[k] = s
 						subOrder = append(subOrder, k)
 					}
@@ -298,10 +328,13 @@ func main() {
 			rowsWithArray, rowsWithEmpty, rowsWithNull, maxLen)
 		fmt.Printf("  %-36s %6s %6s %7s  %s\n", "子字段", "出现", "非零", "取值数", "样例")
 		sort.Strings(subOrder)
+		subFP := map[string]fieldFP{}
 		for _, k := range subOrder {
 			s := subs[k]
+			subFP[k] = fieldFP{Kind: s.kind, Present: s.present, NonZero: s.nonZero}
 			fmt.Printf("  %-36s %6d %6d %7d  %s\n", k, s.present, s.nonZero, len(s.distinct), s.sample)
 		}
+		fp.Nested[nk] = subFP
 	}
 
 	// ---- 5) 业务键重复分析 ----
@@ -325,6 +358,7 @@ func main() {
 	for _, k := range dup {
 		fmt.Printf("    %s × %d  ids=%v\n", k, counter[k], ids[k])
 	}
+	fp.UniqueCodes = len(counter)
 
 	// ---- 6) 数值字段的原始字面量种类 ----
 	fmt.Println("\n=== 数值字段的原始字面量种类（看精度）===")
@@ -371,5 +405,40 @@ func main() {
 	}
 	if !found {
 		fmt.Println("  （未找到）")
+	}
+
+	// ---- 8) 与上次扫描对比 ----
+	//
+	// 为什么这一步比上面所有步骤都重要：上面打印的是「此刻长什么样」，
+	// 而排查「字段取不到值」真正需要的是「跟上一次比，什么变了」。
+	// 星瀚改投影不通知，唯一能抓住它的手段就是留下快照、下次比对。
+	if *baselinePath == "" {
+		return
+	}
+	old, err := loadFingerprint(*baselinePath)
+	switch {
+	case err == nil:
+		reportDiff(old, fp, *verbose)
+		if *updateBaseline {
+			if err := saveFingerprint(*baselinePath, fp); err != nil {
+				fmt.Printf("\n基线写入失败: %v\n", err)
+			} else {
+				fmt.Printf("\n基线已更新: %s\n", *baselinePath)
+			}
+		} else {
+			fmt.Printf("\n（基线未改动；确认变化无误后用 -update 更新）\n")
+		}
+	case os.IsNotExist(err):
+		if err := saveFingerprint(*baselinePath, fp); err != nil {
+			fmt.Printf("\n基线写入失败: %v\n", err)
+		} else {
+			fmt.Printf("\n首次扫描，已建立基线 %s（顶层字段 %d 个 / 嵌套结构 %d 个）\n",
+				*baselinePath, len(fp.Fields), len(fp.Nested))
+		}
+	default:
+		// 基线存在但读不动（被改坏了 / 不是 JSON）——不要静默当成"首次运行"，
+		// 否则会覆盖掉一份本来有价值的快照。
+		fmt.Printf("\n基线 %s 读取失败: %v\n  用 -update 重新生成，或 -baseline=\"\" 跳过对比\n",
+			*baselinePath, err)
 	}
 }

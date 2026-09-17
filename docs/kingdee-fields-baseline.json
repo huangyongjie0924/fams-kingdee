@@ -1,0 +1,446 @@
+{
+  "scanned_at": "2026-09-17 23:39:29",
+  "rows": 227,
+  "unique_codes": 200,
+  "fields": {
+    "assetamount": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "assetcat_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "assetcat_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "assetcat_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "assetname": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "assetunit_enable": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "assetunit_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "assetunit_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "assetunit_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "auditdate": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 54
+    },
+    "barcode": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "billno": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "billstatus": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "billstatus_title": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "bizstatus": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "bizstatus_title": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "createtime": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "finentry": {
+      "kind": "array",
+      "present": 227,
+      "nonzero": 200
+    },
+    "gcgs_userfield_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 0
+    },
+    "gcgs_userfield_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 0
+    },
+    "gcgs_userfield_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 0
+    },
+    "headusedept_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "headusedept_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "headusedept_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "headuseperson_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "headuseperson_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "headuseperson_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "mergedcard": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 217
+    },
+    "model": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 165
+    },
+    "modifytime": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "price": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 0
+    },
+    "realaccountdate": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "remark": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 18
+    },
+    "storeplace_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "storeplace_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "storeplace_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "supplier_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 42
+    },
+    "supplier_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 42
+    },
+    "supplier_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 42
+    },
+    "unit_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "unit_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "unit_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "usedate": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "usestatus_id": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "usestatus_name": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    },
+    "usestatus_number": {
+      "kind": "scalar",
+      "present": 227,
+      "nonzero": 227
+    }
+  },
+  "nested": {
+    "finentry": {
+      "fin_depremethod_id": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depremethod_masterid": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depremethod_name": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depremethod_number": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depremethod_type": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depremethod_type_title": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depreuse_id": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depreuse_masterid": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depreuse_name": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_depreuse_number": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_networth": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "fin_originalval": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "originalfincard_accumdepre": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_addupyeardepre": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 183
+      },
+      "originalfincard_billno": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_billstatus": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_billstatus_title": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_currencyrate": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_decval": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "originalfincard_depredamount": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_finaccountdate": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_id": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_incometax": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 22
+      },
+      "originalfincard_isneeddepre": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 173
+      },
+      "originalfincard_monthdepre": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 27
+      },
+      "originalfincard_monthorigvalchg": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "originalfincard_monthworkload": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "originalfincard_netamount": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_networth": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_number": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_originalamount": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 22
+      },
+      "originalfincard_originaldata": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "originalfincard_originalval": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_preresidualval": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 194
+      },
+      "originalfincard_preusingamount": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_realcardmasterid": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 200
+      },
+      "originalfincard_sourcetype": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "originalfincard_sourcetype_title": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 0
+      },
+      "originalfincard_yearorigvalchg": {
+        "kind": "scalar",
+        "present": 200,
+        "nonzero": 22
+      }
+    }
+  }
+}
