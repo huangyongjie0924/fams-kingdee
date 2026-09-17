@@ -64,10 +64,12 @@ export function qty(v: number | string | null | undefined): string {
 }
 
 // 提交给后端的字段白名单：后端开了 DisallowUnknownFields，多一个键就 400
-// 注意 quantity 故意不在这里：数量由金蝶 assetamount 同步托管，卡片表单只读展示，
-// 提交上去也会被下一次同步覆盖，不如干脆不提交。
+// quantity 在内：手工新建的卡要能自己填数量。金蝶同步来的卡由前端置灰（见
+// CardForm 的 form.synced），且后端同步按「星瀚 >0 才覆盖」处理，改了也会被纠正回来。
+// synced 是派生字段，故意不在白名单里。
 export const CARD_SUBMIT_FIELDS = [
   "asset_code", "name", "category_id", "spec", "serial_no", "unit", "status", "amount",
+  "quantity",
   "use_company_id", "use_dept_id", "user_emp_id", "use_status", "manager_emp_id",
   "owner_company_id", "area_id", "location", "purchase_date", "use_months",
   "source", "in_stock_no", "rfid", "remark",

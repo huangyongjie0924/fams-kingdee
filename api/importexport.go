@@ -263,7 +263,7 @@ func (s *Server) parseImportRows(rows [][]string) ([]model.AssetCard, []importEr
 			}
 		}
 		if v := get(17); v != "" {
-			if !contains(model.AssetSources, v) {
+			if !model.IsValidSource(v) {
 				errs = append(errs, importError{rowNo, "来源", "取值非法：" + v})
 			} else {
 				c.Source = v

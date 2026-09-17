@@ -242,9 +242,12 @@ func mergeOwnedFields(dst, src *model.AssetCard) {
 	dst.Name = src.Name
 	dst.CategoryID = src.CategoryID
 	dst.Unit = src.Unit
-	// 数量是星瀚的强字段：assetamount 全库 227 张卡都有值，直接覆盖不做「>0 才写」的
-	// 保护——星瀚里就是 0 的资产，台账也该显示 0，否则两边永远对不上。
-	dst.Quantity = src.Quantity
+	// 数量：星瀚同步来的卡以星瀚为准（assetamount 全库 227 张都有值，实测都 >0），
+	// 「>0 才覆盖」既能保住对齐，又不会抹掉手工卡自己填的数量
+	// （手工新建的卡不在金蝶里，同步压根走不到这儿，这层是双保险）。
+	if src.Quantity > 0 {
+		dst.Quantity = src.Quantity
+	}
 	dst.UseDeptID = src.UseDeptID
 	dst.UserEmpID = src.UserEmpID
 	dst.UseStatus = src.UseStatus

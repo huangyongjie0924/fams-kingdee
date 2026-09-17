@@ -57,9 +57,23 @@
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <!-- 数量由金蝶 assetamount 同步托管，每次同步直接覆盖，所以这里只读 -->
+                <!-- 数量：金蝶同步来的卡由星瀚托管，改了也会被下次同步覆盖，所以置灰只读；
+                     手工新建的卡不在金蝶里，可以自己填 -->
                 <el-form-item label="数量">
-                  <el-input :model-value="qty(form.quantity)" disabled />
+                  <el-input-number
+                    v-if="!form.synced"
+                    v-model="form.quantity"
+                    :min="0"
+                    :precision="4"
+                    :controls="false"
+                    style="width: 100%"
+                  />
+                  <el-input
+                    v-else
+                    :model-value="qty(form.quantity)"
+                    disabled
+                    title="由金蝶同步，不可编辑"
+                  />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
@@ -77,7 +91,7 @@
               <el-col :span="8">
                 <el-form-item label="来源">
                   <el-select v-model="form.source" clearable style="width: 100%">
-                    <el-option v-for="s in md.enums.sources" :key="s" :label="s" :value="s" />
+                    <el-option v-for="s in sourceOptions" :key="s" :label="s" :value="s" />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -216,7 +230,7 @@
                     default-first-option
                     style="width: 100%"
                   >
-                    <el-option v-for="t in md.enums.fin_asset_type" :key="t" :label="t" :value="t" />
+                    <el-option v-for="t in finAssetTypeOptions" :key="t" :label="t" :value="t" />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -381,6 +395,22 @@ const rules = {
   category_id: [{ required: true, message: "资产类别必填", trigger: "change" }],
 };
 
+// 「金蝶同步」是系统写入的来源值，不在人工可选的枚举里。同步卡打开编辑时必须把它
+// 作为一个选项挂上去，否则下拉框显示空白，保存还会被后端按「来源取值非法」挡回来。
+// 资产类型同理：同步填的是金蝶资产类别名（如「房屋及建筑物」），也不在枚举里。
+// 做法统一成「把当前值补进候选列表」，不动枚举本身。
+function withCurrent(list: string[], cur: string): string[] {
+  return cur && !list.includes(cur) ? [...list, cur] : list;
+}
+
+const sourceOptions = computed(() =>
+  withCurrent(md.value.enums.sources || [], form.value.source),
+);
+
+const finAssetTypeOptions = computed(() =>
+  withCurrent(md.value.enums.fin_asset_type || [], form.value.fin_asset_type),
+);
+
 // 净值 = 原值 - 累计折旧，与后端 validateCard 的兜底口径一致
 watch(
   () => [form.value.fin_original_value, form.value.fin_accum_depreciation],
@@ -484,6 +514,8 @@ onMounted(async () => {
     for (const k of Object.keys(form.value)) {
       if (data[k] !== undefined && data[k] !== null) form.value[k] = data[k];
     }
+    // synced 是派生字段、不在 form 的默认键里，得单独接一下：数量按它决定只读还是可填
+    form.value.synced = !!data.synced;
     form.value.tag_ids = data.tag_ids || [];
     const { data: atts } = await http.get(`/assets/${route.params.id}/attachments`);
     fileList.value = (atts || [])

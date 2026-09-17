@@ -90,6 +90,11 @@ func (s *Server) handleGetCard(w http.ResponseWriter, r *http.Request) {
 	if denyOutOfScope(w, c, sc) {
 		return
 	}
+	// 单卡详情额外告诉前端这张卡是否由金蝶托管，用于决定「数量」能不能编辑。
+	// 列表接口不需要，所以不放进 cardSelect，避免每次列表查询都多一个子查询。
+	if synced, err := s.st.IsCardSynced(id); err == nil {
+		c.Synced = synced
+	}
 	writeJSON(w, http.StatusOK, c)
 }
 
@@ -108,11 +113,15 @@ func validateCard(c *model.AssetCard) string {
 	if !contains(model.AssetStatuses, c.Status) {
 		return "状态取值非法"
 	}
-	if c.Source != "" && !contains(model.AssetSources, c.Source) {
+	if c.Source != "" && !model.IsValidSource(c.Source) {
 		return "来源取值非法"
 	}
-	if c.FinAssetType != "" && !contains(model.FinAssetTypes, c.FinAssetType) {
-		return "资产类型取值非法"
+	// 资产类型不做枚举白名单校验，只挡异常长度：
+	// 表单里这个字段是 allow-create（用户可以自己敲新值），而且同步会把金蝶的资产类别名
+	// （如「房屋及建筑物」）直接填进来，本来就超出 FinAssetTypes 那三个值。
+	// 卡着枚举校验的话，同步卡在表单里改任何字段都会被挡回去。
+	if len([]rune(c.FinAssetType)) > 32 {
+		return "资产类型过长"
 	}
 	if c.FinStatus == "" {
 		c.FinStatus = "未入账"
@@ -181,6 +190,13 @@ func (s *Server) handleUpdateCard(w http.ResponseWriter, r *http.Request) {
 	if msg := validateCard(&c); msg != "" {
 		writeErr(w, http.StatusBadRequest, msg)
 		return
+	}
+	// 金蝶托管的卡，「数量」以星瀚为准：忽略请求里的值，沿用库里现有的。
+	// 前端已经置灰了，这层是防止绕过界面直接调接口把托管字段改脏。
+	if synced, err := s.st.IsCardSynced(id); err == nil && synced {
+		if old, err := s.st.GetCard(id); err == nil && old != nil {
+			c.Quantity = old.Quantity
+		}
 	}
 	if err := s.st.UpdateCard(id, &c, operatorOf(r)); err != nil {
 		if err == sql.ErrNoRows {

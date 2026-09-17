@@ -291,6 +291,20 @@ func (s *Store) GetCard(id int64) (*model.AssetCard, error) {
 	return c, nil
 }
 
+// IsCardSynced 判断这张卡是否由外部系统同步托管（external_asset_map 里有没有活跃关联）。
+// 前端据此决定「数量」这类托管字段能不能编辑：托管的卡改了也会被下次同步覆盖，
+// 不如直接只读；手工新建的卡不在金蝶里，可以自己填。
+func (s *Store) IsCardSynced(cardID int64) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM external_asset_map
+		WHERE card_id = ? AND status = ? AND deleted_at IS NULL`,
+		cardID, model.ExternalMapStatusActive).Scan(&n)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // GetCardByCode 按资产编码精确查一台资产 —— 扫码解析出来的就是编码，
 // 列表页那个 asset_code 过滤是 LIKE 模糊匹配，命中多台时无法确定扫的是哪一台。
 func (s *Store) GetCardByCode(code string) (*model.AssetCard, error) {

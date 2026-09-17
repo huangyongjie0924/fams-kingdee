@@ -17,6 +17,25 @@ var AssetStatuses = []string{StatusIdle, StatusInUse, StatusBorrowed, StatusRepa
 // 来源枚举
 var AssetSources = []string{"购入", "自建", "捐赠", "调入", "租入", "其他"}
 
+// SourceKingdeeSync 是同步写入的来源标记。它**故意不在 AssetSources 里**：
+// 这是系统写的值，不该出现在人工可选的来源下拉里。但校验必须放行它——
+// 否则同步卡在表单里改任何字段都会被「来源取值非法」挡回去。
+const SourceKingdeeSync = "金蝶同步"
+
+// IsValidSource 判断来源是否合法：人工可选的枚举 + 系统写入的同步标记
+func IsValidSource(s string) bool {
+	return contains(AssetSources, s) || s == SourceKingdeeSync
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
 // 财务资产类型
 var FinAssetTypes = []string{"固定资产", "低值易耗品", "无形资产"}
 
@@ -37,9 +56,16 @@ type AssetCard struct {
 	Status   string  `json:"status"`
 	Amount   float64 `json:"amount"`
 	// Quantity 是金蝶的 assetamount：带计量单位的数量——房屋按平方米、设备按台/辆。
-	// 与 Amount（台账自填的金额）完全是两回事，取值由金蝶同步托管，人工不可改。
-	// 金蝶返回 10 位小数（如 194.5200000000），库里按 DECIMAL(18,4) 存。
+	// 与 Amount（台账自填的金额）完全是两回事。
+	// 金蝶同步来的卡由同步托管（星瀚 >0 时覆盖，见 store.mergeOwnedFields）；
+	// 手工新建的卡不在金蝶里，可以自己填。金蝶返回 10 位小数（如 194.5200000000），
+	// 库里按 DECIMAL(18,4) 存。
 	Quantity float64 `json:"quantity"`
+
+	// Synced 是**派生字段，不落库**：表示这张卡是否由外部系统（金蝶）同步托管，
+	// 由 api 层按 external_asset_map 是否有关联记录算出来，只用于前端判断
+	// 「数量」这类托管字段能不能编辑。不要在 cardWriteColumns 里加它。
+	Synced bool `json:"synced,omitempty"`
 
 	UseCompanyID   int64  `json:"use_company_id"`
 	UseCompanyName string `json:"use_company_name,omitempty"`

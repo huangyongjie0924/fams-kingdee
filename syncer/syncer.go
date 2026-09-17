@@ -302,7 +302,7 @@ func (s *Service) mapCard(tx *sql.Tx, src *kingdee.AssetCard) (*model.AssetCard,
 		// 星瀚的 assetamount 就是「数量」：房屋按平方米（194.5200000000），设备按台/辆。
 		// 计量单位在 unit_name（平方米 / 台 / 辆），已映射到 c.Unit。
 		Quantity:     parseAmount(src.AssetAmount),
-		Source:       "金蝶同步",
+		Source:       model.SourceKingdeeSync,
 		FinAssetType: src.AssetCategoryName,
 		// 金蝶没有独立的「资产类型」字段，按口径用资产类别名称填充；price 大于 0 时才是含税金额
 		FinAmountWithTax: parseAmount(src.Price),
