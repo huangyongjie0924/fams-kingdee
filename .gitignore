@@ -3,8 +3,14 @@ config.yaml
 deploy/config.yaml
 .env
 deploy/.env
-cert/*.key
-deploy/cert/*.key
+
+# 证书：自签证书里嵌着部署机地址（CN / SAN），属本机环境产物。
+# 换台机器就必须重新生成，留在仓库里只有暴露内网地址的作用。
+# 生成方式见 README「首次拉取后」第 3 步。
+cert/
+deploy/cert/
+*.crt
+*.key
 *.pem
 
 # ============ 构建产物 ============

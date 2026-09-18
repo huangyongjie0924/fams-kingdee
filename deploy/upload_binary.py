@@ -2,7 +2,11 @@
 
 只替换 /opt/asset-mgr/asset-mgr，不动 config.yaml / .env / cert/ ——
 本次改动全部在编译进二进制的前端资源里，服务器侧配置无需变更。
-密码从环境变量 SSH_PW 读取，不写进文件。
+
+目标机与密码都从环境变量读取，不写进文件：
+    SSH_HOST  目标主机（必填）
+    SSH_USER  登录用户（默认 root）
+    SSH_PW    登录密码（必填）
 """
 import hashlib
 import os
@@ -11,8 +15,8 @@ import time
 
 import paramiko
 
-HOST = "<your-host>"
-USER = "root"
+HOST = os.environ.get("SSH_HOST", "your-server-host")
+USER = os.environ.get("SSH_USER", "root")
 LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "asset-mgr")
 REMOTE_TMP = "/tmp/asset-mgr.new"
 REMOTE_BIN = "/opt/asset-mgr/asset-mgr"

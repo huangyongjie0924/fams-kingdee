@@ -20,7 +20,14 @@ cp config.example.yaml config.yaml
 # 2. 前端依赖
 cd web && npm install
 
-# 3. 证书：cert/server.crt 与 cert/server.key（HTTPS 用，key 权限 600）
+# 3. 自签证书（HTTPS 用）。证书含部署机地址，属本机环境产物，不进仓库
+#    把 <your-host> 换成部署机 IP 或域名（两处都要改）
+mkdir -p cert
+openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+  -keyout cert/server.key -out cert/server.crt \
+  -subj "/CN=<your-host>/O=AssetLedger" \
+  -addext "subjectAltName=IP:<your-host>,IP:127.0.0.1,DNS:localhost"
+chmod 600 cert/server.key
 ```
 
 注意 `go build` 依赖 `web/dist`（`main.go` 里是 `go:embed all:web/dist`），
