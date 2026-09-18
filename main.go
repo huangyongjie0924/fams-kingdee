@@ -59,8 +59,14 @@ func main() {
 			if cfg.Sync.DryRun {
 				log.Printf("提醒: 定时同步已启用但 dry_run=true，调度只会比对、不会写库")
 			}
-			sched := syncer.NewScheduler(syncSvc, cfg.Sync.IntervalMinutes)
+			hour, minute, err := config.ParseDailyAt(cfg.Sync.DailyAt)
+			if err != nil {
+				log.Fatalf("sync.daily_at 配置有误: %v", err)
+			}
+			sched := syncer.NewScheduler(syncSvc, hour, minute)
 			srv.SetSyncScheduler(sched)
+			log.Printf("定时同步已启用：每天 %02d:%02d 先同步部门与人员，再同步资产卡",
+				hour, minute)
 			go sched.Run(context.Background())
 		}
 	}

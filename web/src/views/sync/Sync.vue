@@ -88,8 +88,14 @@
         <el-descriptions-item label="允许全量同步">{{ info.allow_full ? "是" : "否" }}</el-descriptions-item>
         <el-descriptions-item label="增量游标">{{ info.state?.cursor_value || "—" }}</el-descriptions-item>
         <el-descriptions-item label="最近成功时间">{{ fmt(info.state?.last_success_at) }}</el-descriptions-item>
-        <el-descriptions-item label="同步间隔">
-          {{ sched.enabled ? `${sched.interval_minutes} 分钟` : "—" }}
+        <el-descriptions-item label="每日同步时刻">
+          <template v-if="sched.enabled">
+            每天 {{ sched.daily_at }}
+            <el-tooltip content="一个批次里先同步部门与人员，再同步资产卡" placement="top">
+              <el-tag type="info" size="small" class="ml">先组织后资产卡</el-tag>
+            </el-tooltip>
+          </template>
+          <span v-else>—</span>
         </el-descriptions-item>
         <el-descriptions-item label="下次自动同步">
           {{ sched.enabled ? fmt(sched.next_run_at) : "—" }}

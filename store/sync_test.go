@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"asset-mgr/config"
 	"asset-mgr/model"
@@ -34,6 +36,124 @@ func TestColumnValueAlignment(t *testing.T) {
 		if owned[col] {
 			t.Fatalf("列 %s 同时出现在 kingdeeOwnedColumns 与 cardInitColumns，INSERT 会重复", col)
 		}
+	}
+
+	// 真的拼一遍 INSERT，确认列清单与参数个数一致
+	q, args := cardInsertStatement(c, "tester")
+	cols := insertColumnsOf(t, q)
+	if len(cols) != len(args) {
+		t.Fatalf("INSERT 列清单有 %d 列，参数却有 %d 个\n%s", len(cols), len(args), q)
+	}
+	seen := make(map[string]bool, len(cols))
+	for _, col := range cols {
+		if seen[col] {
+			t.Fatalf("INSERT 列清单出现重复列 %s\n%s", col, q)
+		}
+		seen[col] = true
+	}
+}
+
+// insertColumnsOf 从 INSERT 语句里取出列清单。
+func insertColumnsOf(t *testing.T, q string) []string {
+	t.Helper()
+	open := strings.Index(q, "(")
+	close := strings.Index(q, ")")
+	if open < 0 || close < open {
+		t.Fatalf("INSERT 语句结构不对，取不到列清单: %s", q)
+	}
+	return strings.Split(q[open+1:close], ",")
+}
+
+// TestInsertStatementCoversNotNullColumns 守住「INSERT 带上了所有无默认值的 NOT NULL 列」。
+//
+// 这条守卫是踩出来的：`asset_code` 曾经既不在 kingdeeOwnedColumns（那是"每次同步都覆盖"的
+// 字段组），也不在 cardInitColumns，于是 INSERT 的列清单里根本没有它 ——
+// 而 asset_card.asset_code 是 NOT NULL 且无默认值，插入直接报
+// `1364 Field 'asset_code' doesn't have a default value`。
+//
+// 为什么能在仓库里躺很久：生产库里 227 张卡早就在了，同步走的一直是 UPDATE 分支；
+// dry-run 也碰不到 INSERT（它只比对）。只有星瀚新增一张卡、或全新部署卡片表为空时，
+// 才会走到这里——而那时是整批一起失败。上面那条 TestColumnValueAlignment 只查
+// "列数 == 值数"，查不出"少了一整列"。
+func TestInsertStatementCoversNotNullColumns(t *testing.T) {
+	c := &model.AssetCard{AssetCode: "12020302000003", Name: "乐荟科创中心3栋3层C2户"}
+	q, args := cardInsertStatement(c, "tester")
+	cols := insertColumnsOf(t, q)
+
+	idx := make(map[string]int, len(cols))
+	for i, col := range cols {
+		idx[col] = i
+	}
+
+	// asset_card 里 NOT NULL 且无默认值的列，目前只有 asset_code 一个。
+	// 加新的这类列时，这里也要一起加——那正是这条测试存在的意义。
+	for _, must := range []string{"asset_code"} {
+		i, ok := idx[must]
+		if !ok {
+			t.Fatalf("INSERT 列清单缺少 %s（NOT NULL 且无默认值，不写就报 1364）\n列: %v", must, cols)
+		}
+		if got, ok := args[i].(string); !ok || got != c.AssetCode {
+			t.Errorf("参数里 %s 位置的值不对：期望 %q，得到 %#v", must, c.AssetCode, args[i])
+		}
+	}
+}
+
+// TestInsertNewCardAgainstRealDB 用真实数据库真的插一张卡再回滚。
+//
+// 纯单测只能验列清单；「这些列名与这张表的实际结构对不对得上」只有真库能回答。
+// 本次就是靠它抓出 asset_code 缺失的——列清单看起来完全自洽，
+// 但对不上表结构，报错发生在 MySQL 那一侧。
+//
+// 安全性：整个 INSERT 在一个事务里执行，末尾 Rollback，库里不留任何数据。
+func TestInsertNewCardAgainstRealDB(t *testing.T) {
+	dsn := testDSN(t)
+	st, err := New(dsn)
+	if err != nil {
+		t.Fatalf("连接数据库失败: %v", err)
+	}
+	defer st.Close()
+
+	tx, err := st.db.Begin()
+	if err != nil {
+		t.Fatalf("开启事务失败: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// 用不可能与真实数据冲突的编码
+	const code = "ZZ-TEST-INSERT-0001"
+	if _, err := tx.Exec("DELETE FROM asset_card WHERE asset_code = ?", code); err != nil {
+		t.Fatalf("清理历史残留失败: %v", err)
+	}
+
+	card := &model.AssetCard{AssetCode: code, Name: "插入路径探针", Quantity: 1.5}
+	q, args := cardInsertStatement(card, "test")
+	if _, err := tx.Exec(q, args...); err != nil {
+		t.Fatalf("新建卡的 INSERT 失败: %v\n语句: %s", err, q)
+	}
+
+	// 读回来确认编码确实落进去了，而不是靠列顺序碰巧对
+	var gotCode, gotName string
+	if err := tx.QueryRow("SELECT asset_code, name FROM asset_card WHERE asset_code = ?", code).
+		Scan(&gotCode, &gotName); err != nil {
+		t.Fatalf("回读失败: %v", err)
+	}
+	if gotCode != code {
+		t.Errorf("asset_code 落库为 %q，期望 %q", gotCode, code)
+	}
+	if gotName != card.Name {
+		t.Errorf("name 落库为 %q，期望 %q", gotName, card.Name)
+	}
+
+	// 回滚后确认库里没留下东西
+	if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+		t.Fatalf("回滚失败: %v", err)
+	}
+	var n int
+	if err := st.db.QueryRow("SELECT COUNT(*) FROM asset_card WHERE asset_code = ?", code).Scan(&n); err != nil {
+		t.Fatalf("复查失败: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("库被写脏了：探针卡留下了 %d 行", n)
 	}
 }
 
@@ -360,5 +480,48 @@ func TestDryRunOverlayAgainstRealDB(t *testing.T) {
 	}
 	if name == "dry-run-overlay-probe" {
 		t.Fatal("库被写脏了：探针名称落库了，dry-run 不该产生任何写入")
+	}
+}
+
+// TestSyncRunSinceQueryKeepsBothFilters 守住「启动补跑」判据的两道过滤。
+//
+// 判据是「**调度器**跑成功过一次**资产卡**」，缺任何一半都会错，而且错得很隐蔽：
+//
+//   - 少了 status='success'：一次失败的跑批会被当成"今天已经跑过了"，当天不再补跑。
+//   - 少了 triggered_by：手工点「立即增量同步」只跑资产卡、不刷组织，
+//     重启后会被误判成"今天的定时批次已跑过"，组织主数据整天不更新。
+//
+// 这两条都不会让编译失败，也不会让别的测试变红，所以单独钉一遍。
+func TestSyncRunSinceQueryKeepsBothFilters(t *testing.T) {
+	since := time.Date(2026, 9, 17, 0, 0, 0, 0, time.Local)
+
+	q, args := syncRunSinceQuery(model.ResourceAssetCard, "scheduler", since)
+	if !strings.Contains(q, "status = ?") {
+		t.Errorf("SQL 丢了 status 过滤，失败的批次会被当成已同步: %s", q)
+	}
+	if !strings.Contains(q, "triggered_by = ?") {
+		t.Errorf("SQL 丢了 triggered_by 过滤，手工同步会压掉启动补跑: %s", q)
+	}
+	if len(args) != 4 {
+		t.Fatalf("参数应为 4 个（resource/status/since/triggered_by），实际 %d: %#v", len(args), args)
+	}
+	if args[1] != model.SyncStatusSuccess {
+		t.Errorf("第 2 个参数应是 success，实际 %#v", args[1])
+	}
+	if got, ok := args[2].(time.Time); !ok || !got.Equal(since) {
+		t.Errorf("第 3 个参数应是 since，实际 %#v", args[2])
+	}
+	if args[3] != "scheduler" {
+		t.Errorf("第 4 个参数应是 scheduler，实际 %#v", args[3])
+	}
+
+	// triggeredBy 为空表示不限来源，是给别的调用方留的口子。
+	// 调度器不会这么传——它必须区分是谁触发的。
+	q2, args2 := syncRunSinceQuery(model.ResourceAssetCard, "", since)
+	if strings.Contains(q2, "triggered_by") {
+		t.Errorf("triggeredBy 为空时不该带这个条件: %s", q2)
+	}
+	if len(args2) != 3 {
+		t.Errorf("triggeredBy 为空时参数应为 3 个，实际 %d", len(args2))
 	}
 }

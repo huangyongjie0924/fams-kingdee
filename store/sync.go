@@ -220,9 +220,21 @@ var kingdeeOwnedColumns = []string{
 	"fin_use_months", "fin_residual_rate",
 }
 
-// 新建同步卡时按类别默认值初始化，之后视为本地字段，不再被同步覆盖。
+// 新建同步卡时写入、之后视为本地字段、不再被同步覆盖的列。
 // 注意不能与 kingdeeOwnedColumns 重叠——INSERT 时两组列会被拼在一起，重复列名会报错。
-var cardInitColumns = []string{"use_months"}
+//
+// asset_code 必须在这里。它不在 kingdeeOwnedColumns 里（那一组是"同步每次都覆盖"的字段），
+// 但 INSERT 的列清单如果也不带上它，就会撞上 `Field 'asset_code' doesn't have a default value`
+// ——asset_card.asset_code 是 NOT NULL 且无默认值。
+//
+// 这个坑在生产库里长期看不见：227 张卡早就在了，同步走的一直是 UPDATE 分支。
+// 只有**星瀚新增一张卡**（或全新部署、卡片表为空）时才会走到 INSERT，
+// 而那时整批 227 张会一起报失败。dry-run 也看不出来，因为它根本不执行 INSERT。
+//
+// 只放进 INSERT 而不放进 kingdeeOwnedColumns：查找是按 `WHERE asset_code = ?` 做的，
+// 命中的行本来就同码，覆盖它没有意义；而万一将来改成按外部映射命中，
+// 本地码与星瀚码可能不同，那时覆盖会改掉标签/二维码指向的编码。
+var cardInitColumns = []string{"use_months", "asset_code"}
 
 func ownedCardValues(c *model.AssetCard) []any {
 	return []any{
@@ -239,7 +251,27 @@ func ownedCardValues(c *model.AssetCard) []any {
 // cardInitValues 与 cardInitColumns 一一对应。两者必须同步增删：
 // INSERT 时列名与值会被分别拼起来，数目不一致会直接报 SQL 错。
 func cardInitValues(c *model.AssetCard) []any {
-	return []any{c.UseMonths}
+	return []any{c.UseMonths, c.AssetCode}
+}
+
+// cardInsertStatement 拼出新建同步卡的 INSERT 语句与参数。
+//
+// 抽成独立函数是为了能单测。这条路径的两个错误都**只在真的新建卡时才暴露**：
+// 列与值数目不一致（SQL 直接报错）、漏了某个 NOT NULL 无默认值的列
+// （如 asset_code，报 1364 Field doesn't have a default value）。
+// dry-run 走不到 INSERT，日常增量同步也只在星瀚新增卡片时才走到——
+// 也就是说，本地库已经全量同步过之后，这个函数可能几个月都不被执行一次。
+func cardInsertStatement(c *model.AssetCard, operator string) (string, []any) {
+	cols := append([]string{}, kingdeeOwnedColumns...)
+	cols = append(cols, cardInitColumns...)
+	cols = append(cols, "created_by", "ext_json")
+
+	args := append(ownedCardValues(c), cardInitValues(c)...)
+	args = append(args, operator, nullJSON(c.ExtJSON))
+
+	q := fmt.Sprintf("INSERT INTO asset_card (%s) VALUES (%s)",
+		strings.Join(cols, ","), placeholders(len(cols)))
+	return q, args
 }
 
 // statusOrDefault 金蝶的使用状态没映射出台账枚举时（syncer 留空）落到「闲置」，
@@ -452,14 +484,9 @@ func ApplyOwnedCardTx(tx *sql.Tx, c *model.AssetCard, operator string, dryRun bo
 		return 0, CardActionCreated, nil
 	}
 
-	cols := append([]string{}, kingdeeOwnedColumns...)
-	cols = append(cols, cardInitColumns...)
-	cols = append(cols, "created_by", "ext_json")
 	// 用 cardInitValues 而不是手写值列表：手写时加了一列却忘了加值，
 	// 会变成列数与值数不匹配的 INSERT——而且只有在真的新建卡时才会暴露。
-	args := append(ownedCardValues(c), cardInitValues(c)...)
-	args = append(args, operator, nullJSON(c.ExtJSON))
-	q := fmt.Sprintf("INSERT INTO asset_card (%s) VALUES (%s)", strings.Join(cols, ","), placeholders(len(cols)))
+	q, args := cardInsertStatement(c, operator)
 	res, err := tx.Exec(q, args...)
 	if err != nil {
 		return 0, "", fmt.Errorf("insert card: %w", err)

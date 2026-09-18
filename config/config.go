@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -59,10 +61,15 @@ type Config struct {
 	} `yaml:"yunzhijia"`
 
 	Sync struct {
-		Enable          bool `yaml:"enable"`
-		IntervalMinutes int  `yaml:"interval_minutes"`
-		DryRun          bool `yaml:"dry_run"`
-		AllowFullSync   bool `yaml:"allow_full_sync"`
+		Enable bool `yaml:"enable"`
+		// DailyAt 是每日定时同步时刻，格式 "HH:MM"（本地时区），默认 00:00。
+		//
+		// 取代了原来的 interval_minutes（每 N 分钟跑一次资产卡）：
+		// 现在一个批次里先同步组织主数据、再同步资产卡，两者必须成对且有序，
+		// 按分钟间隔各跑各的会把顺序打散。
+		DailyAt       string `yaml:"daily_at"`
+		DryRun        bool   `yaml:"dry_run"`
+		AllowFullSync bool   `yaml:"allow_full_sync"`
 	} `yaml:"sync"`
 }
 
@@ -111,8 +118,13 @@ func Load(path string) (*Config, error) {
 	if c.Kingdee.DepartmentQueryPath == "" {
 		c.Kingdee.DepartmentQueryPath = "/v2/gcgs/base/bos_adminorg/query-department"
 	}
-	if c.Sync.IntervalMinutes <= 0 {
-		c.Sync.IntervalMinutes = 60
+	if c.Sync.DailyAt == "" {
+		c.Sync.DailyAt = "00:00"
+	}
+	// 在启动时就把格式错误打出来。放到调度器里解析的话，一个写错的 "24:00"
+	// 会表现为「定时同步静默不跑」，而这类问题通常要等到第二天早上才发现。
+	if _, _, err := ParseDailyAt(c.Sync.DailyAt); err != nil {
+		return nil, fmt.Errorf("sync.daily_at 配置有误: %w", err)
 	}
 	// 云之家基础地址不设默认值：各企业用自己的私有化域名，写死只会让
 	// 「配置漏填」表现为运行时连不上。留空时仍可用 YZJ_BASE_URL 注入。
@@ -142,6 +154,33 @@ func overrideIfSet(key string, target *string) {
 	if v := os.Getenv(key); v != "" {
 		*target = v
 	}
+}
+
+// ParseDailyAt 解析 "HH:MM" 形式的每日执行时刻。
+//
+// 严格要求两位：只收 "00:00" / "23:59"，不收 "0:0" / "24:00" / "00:60"。
+// 配置文件里的时间是要长期躺着不动的，宽松解析省下的几个字符，
+// 换来的是"0:0 到底是零点还是没写"这种只能靠猜的歧义。
+func ParseDailyAt(v string) (hour, minute int, err error) {
+	parts := strings.Split(strings.TrimSpace(v), ":")
+	if len(parts) != 2 || len(parts[0]) != 2 || len(parts[1]) != 2 {
+		return 0, 0, fmt.Errorf("格式应为 HH:MM（例如 00:00），实际是 %q", v)
+	}
+	hour, err = strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("小时不是数字: %q", parts[0])
+	}
+	minute, err = strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("分钟不是数字: %q", parts[1])
+	}
+	if hour < 0 || hour > 23 {
+		return 0, 0, fmt.Errorf("小时应在 00~23，实际是 %d", hour)
+	}
+	if minute < 0 || minute > 59 {
+		return 0, 0, fmt.Errorf("分钟应在 00~59，实际是 %d", minute)
+	}
+	return hour, minute, nil
 }
 
 // DSN 固定用 +08:00 数值偏移，不用命名时区：MySQL 实例可能缺时区表。

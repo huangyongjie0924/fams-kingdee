@@ -59,6 +59,6 @@ yunzhijia:
 
 sync:
   enable: false                  # 金蝶凭据缺失时会被强制关闭
-  interval_minutes: 60
+  daily_at: "00:00"              # 每日执行时刻 HH:MM；先部门与人员，再资产卡
   dry_run: true                  # 首次接入建议先跑 dry_run
   allow_full_sync: false
