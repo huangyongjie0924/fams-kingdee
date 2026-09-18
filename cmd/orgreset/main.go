@@ -94,11 +94,20 @@ func main() {
 
 	// ---- 第 1 步：备份 ----
 	// 备份写在清理之前，且必须成功；写不成就不要往下走。
-	backupPath, err := writeBackup(st.DB(), *backupDir)
+	//
+	// 先抓一份「账号 → 工号」的对照，再写进备份文件：
+	// 员工行会被删掉重建、ID 全变，sys_user.employee_id 因此断链。
+	// emp_no 是唯一的业务键，按它重绑是确定性的，不需要猜。
+	// 对照也落盘一份，万一进程在中途被杀，还能照着手工恢复。
+	bindings, err := sysUserBindings(st.DB())
+	if err != nil {
+		log.Fatalf("读取账号绑定失败: %v", err)
+	}
+	backupPath, err := writeBackup(st.DB(), *backupDir, bindings)
 	if err != nil {
 		log.Fatalf("备份失败，未做任何改动: %v", err)
 	}
-	fmt.Printf("\n[1/5] 备份已写入 %s\n", backupPath)
+	fmt.Printf("\n[1/5] 备份已写入 %s（含 %d 条账号绑定对照）\n", backupPath, len(bindings))
 
 	// ---- 第 2 步：清理主数据与映射 ----
 	before, err := countOrgRows(st.DB())
@@ -112,6 +121,9 @@ func main() {
 		fmt.Println("      dry-run：跳过清理与写入。去掉 -dry-run=false 才会真跑。")
 		fmt.Println("\n[3/5] 组织同步    （dry-run 跳过）")
 		fmt.Println("[4/5] 资产卡同步  （dry-run 跳过）")
+		if len(bindings) > 0 {
+			fmt.Printf("      账号重绑    （dry-run 跳过，真跑时会按工号重绑 %d 个账号）\n", len(bindings))
+		}
 		fmt.Println("[5/5] 体检        （dry-run 跳过）")
 		return
 	}
@@ -135,6 +147,9 @@ func main() {
 
 	// ---- 第 4 步：资产卡全量同步，重挂引用 ----
 	// 这一步是引用能接上的唯一途径：组织同步只写主数据表，不碰 asset_card。
+	//
+	// 必须是全量：增量按修改时间取，没被改动过的卡片会被跳过，
+	// 它们身上断掉的引用就永远接不上。
 	fmt.Println("\n[4/5] 资产卡同步（重挂 use_dept_id / user_emp_id / owner_company_id）...")
 	run, err := svc.Run(ctx, model.SyncModeFull, "orgreset")
 	if err != nil {
@@ -142,6 +157,25 @@ func main() {
 	}
 	fmt.Printf("      资产卡 id=%d status=%s total=%d updated=%d skipped=%d failed=%d\n",
 		run.ID, run.Status, run.TotalCount, run.UpdatedCount, run.SkippedCount, run.FailedCount)
+
+	// ---- 第 4b 步：把账号按工号重绑回新的员工行 ----
+	// 不做这一步的话，所有绑了员工的账号都会指向不存在的 ID——
+	// 这是本工具自己造成的回归，不该留给人工收尾。
+	rebound, unmatched, err := rebindSysUsers(st.DB(), bindings)
+	if err != nil {
+		log.Fatalf("账号重绑失败，请按 %s 里的 UPDATE 语句手工恢复: %v", backupPath, err)
+	}
+	fmt.Printf("      账号重绑: 成功 %d / 对不上 %d（按工号匹配）\n", rebound, unmatched)
+	if unmatched > 0 {
+		for _, b := range bindings {
+			if b.EmpNo == "" {
+				continue
+			}
+			if ok, err := employeeExistsByNo(st.DB(), b.EmpNo); err == nil && !ok {
+				fmt.Printf("        - 账号 %s 原绑工号 %s，星瀚范围内没有这个工号，需人工指定\n", b.Username, b.EmpNo)
+			}
+		}
+	}
 
 	// ---- 第 5 步：体检 ----
 	fmt.Println("\n[5/5] 体检")
@@ -257,9 +291,69 @@ func purgeOrgMasters(db *sql.DB) (*orgCounts, error) {
 	return out, nil
 }
 
+// sysUserBinding 是「账号 → 原绑工号」的一条对照。
+type sysUserBinding struct {
+	UserID   int64
+	Username string
+	EmpNo    string
+}
+
+// sysUserBindings 抓取所有已绑定员工的账号及其工号。
+// 必须在清理之前调用：清理之后 employee 行就换了 ID，再也查不出原来的对应关系。
+func sysUserBindings(db *sql.DB) ([]sysUserBinding, error) {
+	rows, err := db.Query(`SELECT u.id, u.username, e.emp_no
+		FROM sys_user u JOIN employee e ON e.id = u.employee_id
+		WHERE u.employee_id > 0 ORDER BY u.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []sysUserBinding
+	for rows.Next() {
+		var b sysUserBinding
+		if err := rows.Scan(&b.UserID, &b.Username, &b.EmpNo); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// rebindSysUsers 按工号把账号重新绑到重建后的员工行。
+//
+// 按 emp_no 匹配而不是按姓名：姓名会重名（星瀚里一个部门名能挂 78 个节点，
+// 人名同理），工号在人员接口里是唯一键。匹配不上就保持原样并报出来，
+// 不猜——把 A 的账号绑到 B 头上比断链严重得多。
+func rebindSysUsers(db *sql.DB, bindings []sysUserBinding) (rebound, unmatched int, err error) {
+	for _, b := range bindings {
+		res, err := db.Exec(`UPDATE sys_user SET employee_id =
+			(SELECT id FROM employee WHERE emp_no = ? LIMIT 1)
+			WHERE id = ? AND EXISTS (SELECT 1 FROM employee WHERE emp_no = ?)`,
+			b.EmpNo, b.UserID, b.EmpNo)
+		if err != nil {
+			return rebound, unmatched, fmt.Errorf("重绑账号 %s（工号 %s）: %w", b.Username, b.EmpNo, err)
+		}
+		n, _ := res.RowsAffected()
+		if n > 0 {
+			rebound++
+		} else {
+			unmatched++
+		}
+	}
+	return rebound, unmatched, nil
+}
+
+func employeeExistsByNo(db *sql.DB, empNo string) (bool, error) {
+	var n int
+	err := db.QueryRow(`SELECT COUNT(*) FROM employee WHERE emp_no = ?`, empNo).Scan(&n)
+	return n > 0, err
+}
+
 // writeBackup 把将被清理的 4 张表导出成可回灌的 INSERT 语句。
 // 只导出这 4 张：它们才是本工具会动的东西，全库导出会把备份文件撑大且拖慢。
-func writeBackup(db *sql.DB, dir string) (string, error) {
+//
+// bindings 会额外写成 UPDATE 语句附在末尾：账号重绑失败时靠它手工恢复。
+func writeBackup(db *sql.DB, dir string, bindings []sysUserBinding) (string, error) {
 	if dir == "" {
 		dir = "orgreset-backup"
 	}
@@ -277,6 +371,18 @@ func writeBackup(db *sql.DB, dir string) (string, error) {
 	for _, t := range tables {
 		if err := dumpTable(db, f, t); err != nil {
 			return "", fmt.Errorf("导出 %s: %w", t, err)
+		}
+	}
+
+	if len(bindings) > 0 {
+		if _, err := fmt.Fprint(f, "\n-- sys_user 重绑映射（账号 → 工号）。重建后按工号重新指向新的 employee.id\n"); err != nil {
+			return "", err
+		}
+		for _, b := range bindings {
+			if _, err := fmt.Fprintf(f, "-- %s -> %s\nUPDATE sys_user SET employee_id = (SELECT id FROM employee WHERE emp_no = %s LIMIT 1) WHERE id = %d;\n",
+				b.Username, b.EmpNo, quote(b.EmpNo), b.UserID); err != nil {
+				return "", err
+			}
 		}
 	}
 	return path, nil
