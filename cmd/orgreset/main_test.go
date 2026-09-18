@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"database/sql"
+	"path/filepath"
+	"testing"
+
+	"asset-mgr/config"
+)
 
 // TestCheckConfirm 守住「真跑前必须确认库名」这道闸。
 //
@@ -62,5 +68,63 @@ func TestPurgeOrderPutsMapFirst(t *testing.T) {
 		if !seen[k] {
 			t.Errorf("映射类别漏了 %s —— 它的主数据会在重建时全部消失", k)
 		}
+	}
+}
+
+// testDB 打开配置里的库用于只读断言。拿不到就 Skip，
+// 与 store 包里需要数据库的测试同一套约定（默认不依赖外部库）。
+func testDB(t *testing.T) *sql.DB {
+	t.Helper()
+	cfg, err := config.Load(filepath.Join("..", "..", "config.yaml"))
+	if err != nil {
+		t.Skipf("读不到 ../../config.yaml，跳过需要数据库的测试: %v", err)
+	}
+	db, err := sql.Open("mysql", cfg.DSN())
+	if err != nil {
+		t.Skipf("连接数据库失败，跳过: %v", err)
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		t.Skipf("数据库不可达，跳过: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+// TestInspectSplitsVisibleAndSoftDeletedCards 守住「软删除卡不进断链统计」。
+//
+// 这个体检报告是重建之后唯一的验收依据。把软删除的卡算进来，会报出一批
+// 界面上根本看不到、也不需要处理的卡，让人以为影响面比实际大——
+// 实测就报过"4 张卡断链"，其中 2 张早已软删。
+//
+// 只读断言，可以对着开发库跑。
+func TestInspectSplitsVisibleAndSoftDeletedCards(t *testing.T) {
+	db := testDB(t)
+
+	var total int
+	if err := db.QueryRow("SELECT COUNT(*) FROM asset_card").Scan(&total); err != nil {
+		t.Fatalf("统计 asset_card 失败: %v", err)
+	}
+
+	r, err := inspect(db)
+	if err != nil {
+		t.Fatalf("体检失败: %v", err)
+	}
+
+	if r.Cards+r.SoftDeletedCards != total {
+		t.Errorf("可见 %d + 软删 %d 应等于总数 %d，说明有一类被漏统计",
+			r.Cards, r.SoftDeletedCards, total)
+	}
+
+	// 断链明细只能出现在可见卡上：条数超过可见卡数就说明把软删除的也算进来了。
+	broken := r.CardDeptBroken + r.CardEmpBroken + r.CardCompanyBroken
+	if r.Cards == 0 && broken > 0 {
+		t.Errorf("可见卡为 0 却有 %d 条断链，统计口径不对", broken)
+	}
+	if len(r.BrokenCards) == 0 && broken > 0 {
+		t.Errorf("汇总报 %d 条断链但明细为空，两者口径不一致", broken)
+	}
+	if len(r.BrokenCards) > 0 && broken == 0 {
+		t.Errorf("明细有 %d 条但汇总为 0，两者口径不一致", len(r.BrokenCards))
 	}
 }

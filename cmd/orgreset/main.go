@@ -124,7 +124,14 @@ func main() {
 		if len(bindings) > 0 {
 			fmt.Printf("      账号重绑    （dry-run 跳过，真跑时会按工号重绑 %d 个账号）\n", len(bindings))
 		}
-		fmt.Println("[5/5] 体检        （dry-run 跳过）")
+		// 体检在 dry-run 下也跑：它只读，而且"重建前长什么样"正是做决定要看的东西。
+		// 光看"会删 20 个部门"没有体感，看到"202 张可见卡里 2 张引用会断"才有。
+		fmt.Println("\n[5/5] 体检（当前状态，只读）")
+		if cur, err := inspect(st.DB()); err != nil {
+			fmt.Printf("      体检失败: %v\n", err)
+		} else {
+			cur.print()
+		}
 		return
 	}
 
@@ -475,9 +482,16 @@ type refReport struct {
 	CardDeptBroken, CardEmpBroken          int
 	CardCompanyBroken                      int
 	UserEmpBroken                          int
+	SoftDeletedCards                       int
+	SoftDeletedWithStaleRefs               int
 	BrokenCards                            []string
 }
 
+// inspect 统计重建后的引用完整性。
+//
+// ⚠ 卡片一律只统计 deleted_at IS NULL 的：软删除的卡在界面上根本不显示，
+// 把它们算进"断链"会报出一批用户看不到、也不需要处理的卡，
+// 让人以为影响面比实际大。软删除卡单独报一行，只作信息。
 func inspect(db *sql.DB) (*refReport, error) {
 	r := &refReport{}
 	scalar := []struct {
@@ -494,15 +508,20 @@ func inspect(db *sql.DB) (*refReport, error) {
 			AND NOT EXISTS (SELECT 1 FROM department p WHERE p.id = d.parent_id)`},
 		{&r.CompanyOrphan, `SELECT COUNT(*) FROM department d WHERE d.company_id > 0
 			AND NOT EXISTS (SELECT 1 FROM company c WHERE c.id = d.company_id)`},
-		{&r.Cards, "SELECT COUNT(*) FROM asset_card"},
-		{&r.CardDeptBroken, `SELECT COUNT(*) FROM asset_card c WHERE c.use_dept_id > 0
-			AND NOT EXISTS (SELECT 1 FROM department d WHERE d.id = c.use_dept_id)`},
-		{&r.CardEmpBroken, `SELECT COUNT(*) FROM asset_card c WHERE c.user_emp_id > 0
-			AND NOT EXISTS (SELECT 1 FROM employee e WHERE e.id = c.user_emp_id)`},
-		{&r.CardCompanyBroken, `SELECT COUNT(*) FROM asset_card c WHERE c.owner_company_id > 0
-			AND NOT EXISTS (SELECT 1 FROM company m WHERE m.id = c.owner_company_id)`},
+		{&r.Cards, "SELECT COUNT(*) FROM asset_card WHERE deleted_at IS NULL"},
+		{&r.CardDeptBroken, `SELECT COUNT(*) FROM asset_card c WHERE c.deleted_at IS NULL
+			AND c.use_dept_id > 0 AND NOT EXISTS (SELECT 1 FROM department d WHERE d.id = c.use_dept_id)`},
+		{&r.CardEmpBroken, `SELECT COUNT(*) FROM asset_card c WHERE c.deleted_at IS NULL
+			AND c.user_emp_id > 0 AND NOT EXISTS (SELECT 1 FROM employee e WHERE e.id = c.user_emp_id)`},
+		{&r.CardCompanyBroken, `SELECT COUNT(*) FROM asset_card c WHERE c.deleted_at IS NULL
+			AND c.owner_company_id > 0 AND NOT EXISTS (SELECT 1 FROM company m WHERE m.id = c.owner_company_id)`},
 		{&r.UserEmpBroken, `SELECT COUNT(*) FROM sys_user u WHERE u.employee_id > 0
 			AND NOT EXISTS (SELECT 1 FROM employee e WHERE e.id = u.employee_id)`},
+		{&r.SoftDeletedCards, "SELECT COUNT(*) FROM asset_card WHERE deleted_at IS NOT NULL"},
+		{&r.SoftDeletedWithStaleRefs, `SELECT COUNT(*) FROM asset_card c WHERE c.deleted_at IS NOT NULL
+			AND ((c.use_dept_id > 0 AND NOT EXISTS (SELECT 1 FROM department d WHERE d.id = c.use_dept_id))
+			  OR (c.user_emp_id > 0 AND NOT EXISTS (SELECT 1 FROM employee e WHERE e.id = c.user_emp_id))
+			  OR (c.owner_company_id > 0 AND NOT EXISTS (SELECT 1 FROM company m WHERE m.id = c.owner_company_id)))`},
 	}
 	for _, s := range scalar {
 		var err error
@@ -521,9 +540,10 @@ func inspect(db *sql.DB) (*refReport, error) {
 		(CASE WHEN c.user_emp_id > 0 AND NOT EXISTS (SELECT 1 FROM employee e WHERE e.id = c.user_emp_id) THEN '使用人' ELSE '' END),
 		(CASE WHEN c.owner_company_id > 0 AND NOT EXISTS (SELECT 1 FROM company m WHERE m.id = c.owner_company_id) THEN '权属公司' ELSE '' END)
 		FROM asset_card c
-		WHERE (c.use_dept_id > 0 AND NOT EXISTS (SELECT 1 FROM department d WHERE d.id = c.use_dept_id))
-		   OR (c.user_emp_id > 0 AND NOT EXISTS (SELECT 1 FROM employee e WHERE e.id = c.user_emp_id))
-		   OR (c.owner_company_id > 0 AND NOT EXISTS (SELECT 1 FROM company m WHERE m.id = c.owner_company_id))`)
+		WHERE c.deleted_at IS NULL
+		  AND ((c.use_dept_id > 0 AND NOT EXISTS (SELECT 1 FROM department d WHERE d.id = c.use_dept_id))
+			OR (c.user_emp_id > 0 AND NOT EXISTS (SELECT 1 FROM employee e WHERE e.id = c.user_emp_id))
+			OR (c.owner_company_id > 0 AND NOT EXISTS (SELECT 1 FROM company m WHERE m.id = c.owner_company_id)))`)
 	if err != nil {
 		return nil, err
 	}
@@ -548,9 +568,13 @@ func (r *refReport) print() {
 	fmt.Printf("      主数据: 公司 %d / 部门 %d（有归属公司 %d、有上级 %d）/ 员工 %d\n",
 		r.Company, r.Department, r.DeptWithCompany, r.DeptWithParent, r.Employee)
 	fmt.Printf("      孤儿: 父节点 %d / 归属公司 %d\n", r.ParentOrphan, r.CompanyOrphan)
-	fmt.Printf("      资产卡 %d 张: 使用部门断链 %d / 使用人断链 %d / 权属公司断链 %d\n",
+	fmt.Printf("      资产卡 %d 张（不含软删除）: 使用部门断链 %d / 使用人断链 %d / 权属公司断链 %d\n",
 		r.Cards, r.CardDeptBroken, r.CardEmpBroken, r.CardCompanyBroken)
 	fmt.Printf("      账号绑定员工断链 %d\n", r.UserEmpBroken)
+	if r.SoftDeletedCards > 0 {
+		fmt.Printf("      （另有软删除卡 %d 张，其中 %d 张带失效引用；它们在界面上不显示，不计入上面）\n",
+			r.SoftDeletedCards, r.SoftDeletedWithStaleRefs)
+	}
 
 	if len(r.BrokenCards) == 0 {
 		fmt.Println("      ✓ 没有断链的卡片")
