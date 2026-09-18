@@ -80,6 +80,31 @@ func (r *OrgSyncResult) noteResolved(kind, name string, id int64) {
 	r.resolved[kind][name] = append(r.resolved[kind][name], id)
 }
 
+// PlanOrg 只读地拉取星瀚数据并算出落库计划：不写任何表、不落运行记录、不加锁。
+//
+// 给「清理主数据之前」这类场景用：删之前必须先确认源能读到东西，
+// 否则一次接口故障就会把部门/员工删干净而重建不出来。
+// BuildOrgPlan 里的五处 0 行护栏在这里同样生效，所以预检和真跑用的是同一套判据。
+func (s *Service) PlanOrg(ctx context.Context) (*OrgSyncResult, error) {
+	if s.client == nil {
+		return nil, errors.New("kingdee client not configured")
+	}
+	depts, deptFilter, err := s.client.QueryDepartments(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("拉取星瀚部门失败: %w", err)
+	}
+	people, peopleFilter, err := s.client.QueryPersonnel(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("拉取星瀚人员失败: %w", err)
+	}
+	plan, err := BuildOrgPlan(depts, deptFilter, people, peopleFilter)
+	if err != nil {
+		return nil, err
+	}
+	// DryRun 固定为 true：这个入口本来就不写库，标成 false 会误导调用方。
+	return &OrgSyncResult{Plan: plan, DryRun: true}, nil
+}
+
 // SyncOrg 拉取星瀚的部门与人员，按范围落库到 company / department / employee。
 func (s *Service) SyncOrg(ctx context.Context, triggeredBy string) (*OrgSyncResult, error) {
 	if s.client == nil {
