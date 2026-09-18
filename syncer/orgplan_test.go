@@ -203,9 +203,9 @@ func TestBuildOrgPlanCompanyDetectedByOrgPattern(t *testing.T) {
 func TestBuildOrgPlanPrimaryDeptPrefers1201(t *testing.T) {
 	depts := scopeFixture()
 	people := []kingdee.Personnel{
-		// 两个法人各一条（实测 112 人如此）——应选 1201 那条
+		// 两个法人各一条（2026-09-18 快照：136 人里 118 人如此）——应选 1201 那条
 		mkPerson("000001", "甲", "120108", "120210"),
-		// 只有 1202 的——只能选 1202
+		// 只有 1202 的——只能选 1202（实测 0 人如此，但回退分支必须对）
 		mkPerson("000002", "乙", "120210"),
 		// 1201 下有两条——取编码最小的，保证结果可复现
 		mkPerson("000003", "丙", "120108", "120101"),
