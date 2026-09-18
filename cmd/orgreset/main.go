@@ -107,7 +107,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("备份失败，未做任何改动: %v", err)
 	}
-	fmt.Printf("\n[1/5] 备份已写入 %s（含 %d 条账号绑定对照）\n", backupPath, len(bindings))
+	if *dryRun {
+		// dry-run 既然承诺「不写库」，就不该留下备份文件——反复 dry-run
+		// 会堆一堆 100KB 的垃圾，还容易让人误以为"已经备份过了"。
+		//
+		// 但备份能不能写成功必须在这里验证过：真跑时它失败就等于中止，
+		// 而"会不会失败"正是 dry-run 该回答的问题。所以试写 → 量大小 → 删掉。
+		fi, statErr := os.Stat(backupPath)
+		if rmErr := os.Remove(backupPath); rmErr != nil {
+			log.Fatalf("备份试写后清理失败: %v", rmErr)
+		}
+		if statErr != nil {
+			log.Fatalf("备份试写校验失败: %v", statErr)
+		}
+		fmt.Printf("\n[1/5] 备份试写成功（%d 字节，含 %d 条账号绑定对照），dry-run 已删除\n",
+			fi.Size(), len(bindings))
+	} else {
+		fmt.Printf("\n[1/5] 备份已写入 %s（含 %d 条账号绑定对照）\n", backupPath, len(bindings))
+	}
 
 	// ---- 第 2 步：清理主数据与映射 ----
 	before, err := countOrgRows(st.DB())
