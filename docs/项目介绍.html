@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>固定资产台账管理系统 · 项目介绍</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --panel-2:#f8fafc;
+    --line:#e2e8f0; --line-strong:#cbd5e1;
+    --ink:#0f172a; --ink-2:#475569; --ink-3:#94a3b8;
+    --accent:#2563eb; --accent-soft:#eff6ff; --accent-line:#93c5fd;
+    --ok:#15803d; --ok-soft:#f0fdf4; --ok-line:#86efac;
+    --warn:#b45309; --warn-soft:#fffbeb; --warn-line:#fcd34d;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0b1220; --panel:#111a2b; --panel-2:#0f1728;
+      --line:#22304a; --line-strong:#33456a;
+      --ink:#e8eef8; --ink-2:#a9b8cf; --ink-3:#6b7d99;
+      --accent:#7aa2f7; --accent-soft:#152441; --accent-line:#2f4a7d;
+      --ok:#5ec98a; --ok-soft:#0f2a1d; --ok-line:#2c6b47;
+      --warn:#e0a94a; --warn-soft:#2a2113; --warn-line:#6b5320;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.7; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:56px 24px 96px}
+  h1{font-size:32px; line-height:1.3; margin:0 0 12px; letter-spacing:-.5px; font-weight:600}
+  h2{font-size:21px; margin:0 0 6px; font-weight:600; letter-spacing:-.2px}
+  h3{font-size:16px; margin:0 0 8px; font-weight:600}
+  p{margin:0 0 12px; color:var(--ink-2)}
+  .lede{font-size:16px; color:var(--ink-2); max-width:820px}
+  section{margin-top:56px}
+  .sec-head{margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid var(--line)}
+  .sec-head p{margin:4px 0 0; font-size:14px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.88em;
+       background:var(--panel-2); border:1px solid var(--line); border-radius:5px; padding:1px 5px}
+
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-top:24px}
+  .stat{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px}
+  .stat b{display:block; font-size:26px; font-weight:600; line-height:1.2; letter-spacing:-.5px}
+  .stat span{font-size:12.5px; color:var(--ink-3)}
+
+  .fig{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:8px 8px 0; overflow:hidden}
+  .fig svg{display:block; width:100%; height:auto}
+  .fig figcaption{padding:12px 14px 14px; font-size:13px; color:var(--ink-3); border-top:1px solid var(--line); margin-top:8px}
+
+  .phase{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+         padding:20px 22px; margin-bottom:12px}
+  .phase-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px}
+  .tag{font-size:11.5px; font-weight:600; letter-spacing:.4px; color:var(--accent);
+       background:var(--accent-soft); border:1px solid var(--accent-line);
+       border-radius:999px; padding:2px 10px; white-space:nowrap}
+  .phase-head h3{margin:0; flex:1; min-width:220px}
+  .phase ul{margin:10px 0 0; padding-left:0; list-style:none}
+  .phase li{position:relative; padding-left:20px; margin-bottom:7px; color:var(--ink-2); font-size:14.5px}
+  .phase li::before{content:""; position:absolute; left:5px; top:10px; width:5px; height:5px;
+                    border-radius:50%; background:var(--line-strong)}
+  .phase li b{color:var(--ink); font-weight:600}
+  .metric{margin-top:12px; padding:10px 14px; background:var(--panel-2);
+          border-left:3px solid var(--ok-line); border-radius:0 8px 8px 0;
+          font-size:14px; color:var(--ink-2)}
+  .metric b{color:var(--ok); font-weight:600}
+
+  table{width:100%; border-collapse:collapse; background:var(--panel);
+        border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  th,td{text-align:left; padding:11px 16px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:top}
+  th{background:var(--panel-2); font-weight:600; font-size:13px; color:var(--ink-2); white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  td:first-child{white-space:nowrap; font-weight:600}
+
+  .grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px}
+  .card h3{font-size:15px}
+  .card p{font-size:14px; margin:0}
+  .note{background:var(--warn-soft); border:1px solid var(--warn-line); border-radius:var(--radius);
+        padding:16px 20px; font-size:14.5px; color:var(--ink-2)}
+  .note b{color:var(--warn)}
+  footer{margin-top:64px; padding-top:20px; border-top:1px solid var(--line);
+         font-size:13px; color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>固定资产台账管理系统</h1>
+  <p class="lede">
+    面向集团多法人场景的固定资产台账系统。组织主数据（公司 / 部门 / 员工）与资产卡
+    全部由星瀚（金蝶）ERP 托管、每日凌晨定时同步；台账侧负责资产卡片的精细化维护、
+    财务信息批量更新、二维码标签与盘点执行。后端 Go 单体、前端产物嵌入二进制，
+    单文件部署。
+  </p>
+
+  <div class="stats">
+    <div class="stat"><b>106</b><span>版本控制文件</span></div>
+    <div class="stat"><b>18,865</b><span>行代码（Go + Vue）</span></div>
+    <div class="stat"><b>65</b><span>API 路由</span></div>
+    <div class="stat"><b>20</b><span>数据表</span></div>
+    <div class="stat"><b>18</b><span>前端页面</span></div>
+    <div class="stat"><b>29</b><span>提交</span></div>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <h2>业务框架导图</h2>
+      <p>自下而上四层：数据底座 → 集成同步 → 业务能力 → 用户终端。</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 1000 512" role="img" xmlns="http://www.w3.org/2000/svg">
+        <title>固定资产台账管理系统业务框架</title>
+        <desc>四层业务框架：用户终端层含 PC 浏览器与手机扫码；业务能力层含资产台账管理、盘点管理、主数据管理、财务信息管理、用户与权限；集成同步层含星瀚资产卡、人员、部门三个接口与云之家单点登录；数据底座层含主数据表、资产业务表、外部映射表、同步运行记录。</desc>
+
+        <text x="40" y="30" font-size="12.5" font-weight="600" fill="#64748b" letter-spacing="1">用户与终端</text>
+        <rect x="40" y="44" width="440" height="60" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+        <text x="60" y="70" font-size="15" font-weight="600" fill="#14532d">PC 浏览器</text>
+        <text x="60" y="90" font-size="13" fill="#166534">台账列表 · 卡片详情 · 批量导入导出 · 标签打印 · 盘点执行</text>
+        <rect x="520" y="44" width="440" height="60" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+        <text x="540" y="70" font-size="15" font-weight="600" fill="#14532d">手机扫码</text>
+        <text x="540" y="90" font-size="13" fill="#166534">二维码标签 · 扫码定位资产 · 移动端盘点</text>
+
+        <path d="M500 104 L500 132" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <path d="M496 128 L500 136 L504 128" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <text x="40" y="152" font-size="12.5" font-weight="600" fill="#64748b" letter-spacing="1">业务能力域</text>
+        <rect x="40" y="166" width="168" height="84" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="56" y="192" font-size="14" font-weight="600" fill="#0f172a">资产台账管理</text>
+        <text x="56" y="214" font-size="12" fill="#64748b">卡片增删改查 · 状态机</text>
+        <text x="56" y="232" font-size="12" fill="#64748b">Excel 导入导出 · 附件</text>
+        <rect x="228" y="166" width="168" height="84" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="244" y="192" font-size="14" font-weight="600" fill="#0f172a">盘点管理</text>
+        <text x="244" y="214" font-size="12" fill="#64748b">计划 · 任务分配</text>
+        <text x="244" y="232" font-size="12" fill="#64748b">扫码盘点 · 盘点报告</text>
+        <rect x="416" y="166" width="168" height="84" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="432" y="192" font-size="14" font-weight="600" fill="#0f172a">主数据管理</text>
+        <text x="432" y="214" font-size="12" fill="#64748b">公司 / 部门 / 员工</text>
+        <text x="432" y="232" font-size="12" fill="#64748b">区域 · 分类 · 供应商 · 标签</text>
+        <rect x="604" y="166" width="168" height="84" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="620" y="192" font-size="14" font-weight="600" fill="#0f172a">财务信息管理</text>
+        <text x="620" y="214" font-size="12" fill="#64748b">原值 / 折旧 / 净值</text>
+        <text x="620" y="232" font-size="12" fill="#64748b">含税金额 · 税额 · 数量</text>
+        <rect x="792" y="166" width="168" height="84" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="808" y="192" font-size="14" font-weight="600" fill="#0f172a">用户与权限</text>
+        <text x="808" y="214" font-size="12" fill="#64748b">用户 · 角色 · 权限</text>
+        <text x="808" y="232" font-size="12" fill="#64748b">云之家单点登录</text>
+
+        <path d="M500 250 L500 278" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <path d="M496 274 L500 282 L504 274" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <text x="40" y="298" font-size="12.5" font-weight="600" fill="#64748b" letter-spacing="1">集成与同步</text>
+        <rect x="40" y="312" width="215" height="60" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+        <text x="58" y="338" font-size="14" font-weight="600" fill="#1e3a8a">星瀚资产卡接口</text>
+        <text x="58" y="357" font-size="12" fill="#3b6bb5">Select_AssetCard · 227 张卡</text>
+        <rect x="275" y="312" width="215" height="60" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+        <text x="293" y="338" font-size="14" font-weight="600" fill="#1e3a8a">星瀚人员接口</text>
+        <text x="293" y="357" font-size="12" fill="#3b6bb5">query-personnel · 136 人</text>
+        <rect x="510" y="312" width="215" height="60" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+        <text x="528" y="338" font-size="14" font-weight="600" fill="#1e3a8a">星瀚部门接口</text>
+        <text x="528" y="357" font-size="12" fill="#3b6bb5">query-department · 88 个部门</text>
+        <rect x="745" y="312" width="215" height="60" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+        <text x="763" y="338" font-size="14" font-weight="600" fill="#1e3a8a">云之家 SSO</text>
+        <text x="763" y="357" font-size="12" fill="#3b6bb5">单点登录</text>
+
+        <path d="M500 372 L500 400" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <path d="M496 396 L500 404 L504 396" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <text x="40" y="420" font-size="12.5" font-weight="600" fill="#64748b" letter-spacing="1">数据底座</text>
+        <rect x="40" y="434" width="215" height="56" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="58" y="458" font-size="14" font-weight="600" fill="#334155">主数据表</text>
+        <text x="58" y="477" font-size="11.5" fill="#64748b">company · department · employee</text>
+        <rect x="275" y="434" width="215" height="56" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="293" y="458" font-size="14" font-weight="600" fill="#334155">资产业务表</text>
+        <text x="293" y="477" font-size="11.5" fill="#64748b">asset_card · history · count_*</text>
+        <rect x="510" y="434" width="215" height="56" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="528" y="458" font-size="14" font-weight="600" fill="#334155">外部映射表</text>
+        <text x="528" y="477" font-size="11.5" fill="#64748b">external_master_map · asset_map</text>
+        <rect x="745" y="434" width="215" height="56" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="763" y="458" font-size="14" font-weight="600" fill="#334155">同步运行记录</text>
+        <text x="763" y="477" font-size="11.5" fill="#64748b">sync_run · error · state</text>
+      </svg>
+      <figcaption>业务框架：四个层次各自职责单一。集成层只负责「把星瀚的数据取回来并落库」，
+      业务层只负责「台账自己的维护动作」，两者通过映射表解耦。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>星瀚同步链路</h2>
+      <p>每日 00:00 一批：先同步组织主数据，再同步资产卡。顺序固定，不可颠倒。</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 1000 340" role="img" xmlns="http://www.w3.org/2000/svg">
+        <title>星瀚到台账的同步链路</title>
+        <desc>链路为：星瀚 OpenAPI 三个接口，经同步器解析校验，再经映射解析定位本地行，然后按公司、部门、员工、资产卡的顺序落库，最后写入运行记录并做完整性体检。链路下方有六道护栏。</desc>
+
+        <rect x="40" y="60" width="168" height="72" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+        <text x="124" y="86" font-size="14" font-weight="600" fill="#1e3a8a" text-anchor="middle">星瀚 OpenAPI</text>
+        <text x="124" y="106" font-size="11.5" fill="#3b6bb5" text-anchor="middle">资产卡 / 人员 / 部门</text>
+        <text x="124" y="122" font-size="11.5" fill="#3b6bb5" text-anchor="middle">分页全量拉取</text>
+
+        <path d="M212 96 L236 96" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <path d="M232 92 L240 96 L232 100" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <rect x="240" y="60" width="168" height="72" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="324" y="86" font-size="14" font-weight="600" fill="#0f172a" text-anchor="middle">同步器</text>
+        <text x="324" y="106" font-size="11.5" fill="#64748b" text-anchor="middle">范围过滤 · 解析 · 校验</text>
+        <text x="324" y="122" font-size="11.5" fill="#64748b" text-anchor="middle">组织 / 资产卡两条链</text>
+
+        <path d="M412 96 L436 96" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <path d="M432 92 L440 96 L432 100" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <rect x="440" y="60" width="168" height="72" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="524" y="86" font-size="14" font-weight="600" fill="#0f172a" text-anchor="middle">映射解析</text>
+        <text x="524" y="106" font-size="11.5" fill="#64748b" text-anchor="middle">映射表 → 按编码 → 新建</text>
+        <text x="524" y="122" font-size="11.5" fill="#64748b" text-anchor="middle">不按名称兜底</text>
+
+        <path d="M612 96 L636 96" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <path d="M632 92 L640 96 L632 100" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <rect x="640" y="60" width="152" height="72" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="716" y="86" font-size="14" font-weight="600" fill="#0f172a" text-anchor="middle">落库</text>
+        <text x="716" y="106" font-size="11.5" fill="#64748b" text-anchor="middle">公司→部门→员工</text>
+        <text x="716" y="122" font-size="11.5" fill="#64748b" text-anchor="middle">→资产卡</text>
+
+        <path d="M796 96 L820 96" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <path d="M816 92 L824 96 L816 100" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <rect x="824" y="60" width="136" height="72" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+        <text x="892" y="86" font-size="14" font-weight="600" fill="#14532d" text-anchor="middle">记录与体检</text>
+        <text x="892" y="106" font-size="11.5" fill="#166534" text-anchor="middle">运行统计</text>
+        <text x="892" y="122" font-size="11.5" fill="#166534" text-anchor="middle">引用完整性</text>
+
+        <text x="40" y="178" font-size="12.5" font-weight="600" fill="#64748b" letter-spacing="1">六道护栏</text>
+
+        <rect x="40" y="192" width="288" height="52" rx="9" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+        <text x="58" y="214" font-size="13" font-weight="600" fill="#92400e">0 行必须中止</text>
+        <text x="58" y="232" font-size="11.5" fill="#a16207">源返回 0 行不当「源里没有了」，直接停</text>
+
+        <rect x="344" y="192" width="288" height="52" rx="9" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+        <text x="362" y="214" font-size="13" font-weight="600" fill="#92400e">dry-run 与真跑同口径</text>
+        <text x="362" y="232" font-size="11.5" fill="#a16207">预估数与实跑数必须一致</text>
+
+        <rect x="648" y="192" width="312" height="52" rx="9" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+        <text x="666" y="214" font-size="13" font-weight="600" fill="#92400e">库名确认闸</text>
+        <text x="666" y="232" font-size="11.5" fill="#a16207">破坏性操作要求显式确认库名</text>
+
+        <rect x="40" y="256" width="288" height="52" rx="9" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+        <text x="58" y="278" font-size="13" font-weight="600" fill="#92400e">备份须实测可回灌</text>
+        <text x="58" y="296" font-size="11.5" fill="#a16207">没验证过的备份等于没有备份</text>
+
+        <rect x="344" y="256" width="288" height="52" rx="9" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+        <text x="362" y="278" font-size="13" font-weight="600" fill="#92400e">接口指纹基线对比</text>
+        <text x="362" y="296" font-size="11.5" fill="#a16207">接口静默变更一行命令可见</text>
+
+        <rect x="648" y="256" width="312" height="52" rx="9" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+        <text x="666" y="278" font-size="13" font-weight="600" fill="#92400e">引用完整性体检</text>
+        <text x="666" y="296" font-size="11.5" fill="#a16207">只统计用户可见行，软删单独列出</text>
+      </svg>
+      <figcaption>护栏不是装饰：每一条都对应一次真实故障或一次险些发生的数据事故。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>全过程优化点</h2>
+      <p>按推进阶段排列，每阶段都标出可验证的结果。</p>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><span class="tag">阶段一</span><h3>项目独立化与工程基线</h3></div>
+      <ul>
+        <li>从混杂多个项目的工作目录中<b>独立出来</b>，建立独立版本控制</li>
+        <li><b>统一换行符</b>（<code>.gitattributes</code>）——避免 Windows 与 Linux 协作时整文件 diff</li>
+        <li>补充「首次拉取后」初始化步骤，让新成员能照文档跑起来</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><span class="tag">阶段二</span><h3>资产卡字段与编辑权分离</h3></div>
+      <ul>
+        <li>新增<b>数量</b>字段，补齐卡片信息</li>
+        <li>明确原值 / 累计折旧 / 净值属于<b>人工维护</b>范围，不与星瀚托管字段混同</li>
+        <li>修复「同步来的卡在表单里存不了」的既有缺陷</li>
+        <li>确立<b>托管字段只读、手工字段可填</b>的规则：星瀚来的卡数量只读，手工建的卡可填</li>
+      </ul>
+      <div class="metric">优化效果：<b>杜绝了「同步字段被手工改坏、下轮同步又覆盖回去」的反复</b>。</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><span class="tag">阶段三</span><h3>财务信息批量更新</h3></div>
+      <ul>
+        <li>新增 <b>Excel 导入批量更新</b>财务信息，带<b>预检</b>（先算影响面再落库）</li>
+        <li>补上含税金额 / 税额，打通<b>金额字段全集</b></li>
+        <li>步骤提示跟随字段清单自动更新，避免界面说明与实现脱节</li>
+      </ul>
+      <div class="metric">优化效果：<b>227 张卡的金额回填从「单卡表单点 200 多次」变成一次导入</b>。</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><span class="tag">阶段四</span><h3>财务字段与星瀚对齐（本项目最大的一次攻坚）</h3></div>
+      <ul>
+        <li>定位根因：星瀚资产卡接口<b>取不到原值 / 折旧 / 净值</b>——这些在星瀚里是<b>明细子表</b>数据，主表投影里根本没有</li>
+        <li>把「字段取不到」从猜测变成证据：dump 原始 JSON、逐字段统计存在性与非零数</li>
+        <li>按「财务信息是明细数据」<b>重写接口需求文档</b>，推动星瀚侧补齐投影列</li>
+        <li>星瀚补齐后接入，<b>原值 / 累计折旧 / 净值全量对齐</b>；随后接入含税金额 / 税额</li>
+        <li>勾稽验证：<code>净值 = 原值 − 累计折旧</code> 在样本上 200/200 成立，口径可信才落库</li>
+      </ul>
+      <div class="metric">优化效果：<b>财务金额从「无法与 ERP 对齐」变成全量一致，且对齐口径有勾稽证明</b>。</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><span class="tag">阶段五</span><h3>把「接口会静默变更」工程化</h3></div>
+      <ul>
+        <li>新增 <b>字段指纹对比</b>（<code>cmd/kdscan</code>）：把接口投影变更变成一行命令能看见，并记录服务端生效的过滤条件</li>
+        <li>新增 <b>逐条核对</b>（<code>cmd/kdverify</code>）：把「验证」从一次性临时脚本变成常驻命令，且复用同步器自身的解析规则，避免核对工具自己算错产生假警</li>
+        <li>修正 dry-run 的 affected <b>重复计数</b>，让预检数字可信</li>
+      </ul>
+      <div class="metric">优化效果：<b>接口被改动（服务端过滤条件、投影列）当天就能发现，而不是等业务反馈数据不对</b>。</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><span class="tag">阶段六</span><h3>组织主数据改由星瀚托管</h3></div>
+      <ul>
+        <li>接入部门（行政组织）接口，并定位人员接口 0 行的<b>双重根因</b>（服务端过滤条件 + 投影变更）</li>
+        <li>部门与人员主数据<b>整体切换为星瀚托管</b>，范围固定锁定 <code>1201</code> / <code>1202</code> 两棵子树</li>
+        <li>范围判定改用<b>路径前缀</b>而非编码前缀——编码会跨支（<code>1200151</code> 挂在 <code>1201</code> 下但不以 <code>1201</code> 开头）</li>
+        <li>确立<b>不按名称匹配</b>：5203 个组织节点只有 1333 个唯一名，「财务部」一个名字挂 78 个节点</li>
+        <li>定时同步改为<b>每日一批</b>（先组织、后资产卡），带启动补跑，避免漏跑一天</li>
+        <li>修复「建卡必失败」——<code>asset_code</code> 是 NOT NULL 无默认值，INSERT 必须带上</li>
+      </ul>
+      <div class="metric">优化效果：<b>部门/人员不再需要手工维护；每日 00:00 自动对齐，资产卡不会因主数据缺失而同步不全</b>。</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><span class="tag">阶段七</span><h3>生产库组织主数据重建</h3></div>
+      <ul>
+        <li>根因：历史遗留的部门/员工行是早期「资产卡同步按名称兜底」建出来的，归属与层级残缺</li>
+        <li>新增 <b>五步重建工具</b>（<code>cmd/orgreset</code>）：预检 → 备份 → 清理 → 组织同步 → 资产卡同步，中间夹账号重绑，最后打体检报告</li>
+        <li>实测确认<b>必须连外部映射表一起清</b>：只删业务表不清映射，同步会拿到已删的 ID 走 UPDATE，<b>影响 0 行且不报错</b>，表里永远缺行——而同步自报的「更新 96」和正常跑一模一样</li>
+        <li>重建后按<b>工号</b>自动重绑登录账号（员工行 ID 全变会让绑定断链），不按姓名（会重名）</li>
+        <li>体检口径两处修正：<b>只统计用户可见行</b>（软删除的不算断链）、<b><code>0</code> 是「未设置」哨兵值</b>不是悬空引用</li>
+      </ul>
+      <div class="metric">生产执行结果：<b>部门 20 → 88、员工 65 → 136 全部星瀚托管；同名部门塌陷从 10 组归零；可见资产卡 202 张，部门断链 0、使用人断链 0，仅 2 张权属公司待人工指定</b>。</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>关键设计决策</h2>
+      <p>这些取舍决定了系统的复杂度上限。</p>
+    </div>
+    <table>
+      <thead><tr><th>决策</th><th>选择</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr><td>架构成型</td><td>领域固化，不做元数据驱动</td><td>参考系统是服务数万租户的低代码平台（表单定义 + 六个规则引擎 + 工作流）。本项目只服务一个集团，那套复杂度不成立。卡片、状态机、字段写死在代码里，只把编码规则、扩展字段、列表列配置做成可配。</td></tr>
+        <tr><td>主数据来源</td><td>组织主数据由 ERP 托管，台账不手工维护</td><td>手工维护必然与 ERP 漂移。托管后「谁是权威」只有一个答案。</td></tr>
+        <tr><td>字段编辑权</td><td>托管字段只读，手工字段可填</td><td>避免同步与手工互相覆盖，形成「改了又被刷回去」的死循环。</td></tr>
+        <tr><td>主数据解析</td><td>映射表 → 按编码 → 新建，<b>不按名称兜底</b></td><td>重名会让两个真实节点认领同一行本地数据，且不报错。</td></tr>
+        <tr><td>同步顺序</td><td>公司 → 部门 → 员工 → 资产卡，固定不可颠倒</td><td>资产卡要引用部门与人员，顺序反了会落出缺归属的卡。</td></tr>
+        <tr><td>异常判据</td><td>源返回 0 行一律中止</td><td>接口故障时若照常执行，会把整张表判成「源里没有了」而清空。</td></tr>
+        <tr><td>单据流</td><td>入库单 / 领用退库 / 调拨 / 折旧计提留到二期</td><td>先把台账与主数据的准确性做扎实，再叠加流程。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>工程沉淀：五个常驻命令</h2>
+      <p>把排查手段固化成工具，而不是留在某个人的终端历史里。</p>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>kdscan · 接口字段扫描</h3><p>分页拉全量、dump 原始 JSON、统计每个字段的存在性与非零数，并与基线指纹对比。用于回答「接口到底给了什么」。</p></div>
+      <div class="card"><h3>kdverify · 逐条核对</h3><p>逐张比对「星瀚接口值」与「台账落库值」。复用同步器的解析规则，保证核对口径与落库口径一致。</p></div>
+      <div class="card"><h3>dryrun · 同步预检</h3><p>只比对不写库，算出本次同步会影响多少张卡。内部维护「模拟落库后」的视图，让预估数与实跑数一致。</p></div>
+      <div class="card"><h3>orgsync · 组织同步</h3><p>公司 / 部门 / 员工的同步入口，默认 dry-run。界面上是「金蝶同步」页的按钮。</p></div>
+      <div class="card"><h3>orgreset · 主数据重建</h3><p>五步破坏性操作工具，带预检、可回灌备份、库名确认三道护栏，默认 dry-run。</p></div>
+      <div class="card"><h3>字段指纹基线</h3><p>三个接口各存一份字段基线（存在数 / 非零数 / 类型），接口静默变更当天可见。</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>待推进事项</h2>
+    </div>
+    <div class="note">
+      <b>需星瀚侧配合：</b>修正人员接口服务端过滤条件；补齐 <code>orgstructure_name</code> /
+      <code>orgstructure_number</code>；增加人员「主职」标志；清理 <code>entryentity</code> 的重复明细。<br><br>
+      <b>需人工确认：</b>2 张资产卡的权属公司指向本地自建的「SJ 某电器公司」，星瀚侧没有对应公司，
+      工具不猜归属（挂错公司比断链严重）。<br><br>
+      <b>二期规划：</b>单据流（入库单、领用退库、调拨、折旧计提）；<code>finaccountdate</code> 接入台账「入账时间」。
+    </div>
+  </section>
+
+  <footer>
+    固定资产台账管理系统 · 项目介绍 · 数据截至 2026-09-18
+  </footer>
+
+</div>
+</body>
+</html>
