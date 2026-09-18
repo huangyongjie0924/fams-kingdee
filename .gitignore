@@ -24,6 +24,9 @@ web/node_modules/
 uploads/
 *.log
 
+# orgreset 生成的备份（含部门/员工/公司原始数据，不要提交）
+orgreset-backup/
+
 # ============ 编辑器与系统 ============
 .idea/
 .vscode/
