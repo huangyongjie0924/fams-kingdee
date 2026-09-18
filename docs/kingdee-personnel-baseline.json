@@ -1,5 +1,5 @@
 {
-  "scanned_at": "2026-09-18 11:54:00",
+  "scanned_at": "2026-09-18 13:19:52",
   "filter": "[null]",
   "rows": 5038,
   "unique_codes": 5036,
@@ -142,6 +142,21 @@
   },
   "nested": {
     "entryentity": {
+      "dpt_id": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 10633
+      },
+      "dpt_name": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 10633
+      },
+      "dpt_number": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 10633
+      },
       "id": {
         "kind": "scalar",
         "present": 10633,
@@ -151,6 +166,26 @@
         "kind": "scalar",
         "present": 10633,
         "nonzero": 128
+      },
+      "orgstructure_fullname": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 10633
+      },
+      "orgstructure_id": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 10633
+      },
+      "orgstructure_name": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 0
+      },
+      "orgstructure_number": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 0
       },
       "position": {
         "kind": "scalar",

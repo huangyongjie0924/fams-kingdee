@@ -8,9 +8,10 @@
 //
 // 所以「字段取不到值」的第一反应应该是重扫，而不是翻旧结论。有这条命令，重扫就是一行：
 //
-//	go run ./cmd/kdscan -config config.yaml                 # 资产卡
-//	go run ./cmd/kdscan -config config.yaml -target personnel # 人员
-//	go run ./cmd/kdscan -config config.yaml -target all       # 两个都扫
+//	go run ./cmd/kdscan -config config.yaml                    # 资产卡
+//	go run ./cmd/kdscan -config config.yaml -target personnel  # 人员
+//	go run ./cmd/kdscan -config config.yaml -target dept       # 部门（行政组织）
+//	go run ./cmd/kdscan -config config.yaml -target all        # 三个都扫
 //
 // 为什么不用 struct 解：Go 的 encoding/json 会**静默丢弃**结构体没有声明的键。
 // 用 struct 去问「接口返回了哪些字段」，答案永远是「我声明过的那些」——自证循环。
@@ -111,8 +112,19 @@ func resolveSources(cfg *config.Config, target, dir, override string) ([]source,
 		// 人员接口只要求 data 存在（缺了报「请求参数没有 data 数据」）。
 		// 里面的键（filter / name / number / enable ...）实测全部不生效，
 		// 过滤条件同样在星瀚侧的接口配置里。
+		// 官方文档的请求体参数只有 createtime / pageSize / pageNo 三个，
+		// createtime 是增量同步的时间水位，留空即不按时间过滤。
 		dataBody: map[string]any{},
 		baseline: joinDir(dir, "kingdee-personnel-baseline.json"),
+	}
+	department := source{
+		name:  "dept",
+		label: "部门（行政组织）",
+		path:  cfg.Kingdee.DepartmentQueryPath,
+		// 部门接口同样只要求 data 存在，但 pageSize 是**必填**
+		// （缺了报「页大小pageSize不能为空」）。分页参数由 scanSource 统一带上。
+		dataBody: map[string]any{},
+		baseline: joinDir(dir, "kingdee-dept-baseline.json"),
 	}
 
 	switch target {
@@ -126,13 +138,18 @@ func resolveSources(cfg *config.Config, target, dir, override string) ([]source,
 			personnel.baseline = override
 		}
 		return []source{personnel}, nil
+	case "dept":
+		if override != "" {
+			department.baseline = override
+		}
+		return []source{department}, nil
 	case "all":
 		if override != "" {
 			return nil, fmt.Errorf("-baseline 只在单目标扫描时有意义，-target=all 请改用 -baseline-dir")
 		}
-		return []source{asset, personnel}, nil
+		return []source{asset, personnel, department}, nil
 	default:
-		return nil, fmt.Errorf("未知 -target=%q，可选 asset | personnel | all", target)
+		return nil, fmt.Errorf("未知 -target=%q，可选 asset | personnel | dept | all", target)
 	}
 }
 
@@ -525,9 +542,9 @@ func reportStructure(rows []map[string]any, fp *fingerprint, code string) {
 
 func main() {
 	cfgPath := flag.String("config", "config.yaml", "配置文件")
-	target := flag.String("target", "asset", "扫描目标：asset | personnel | all")
+	target := flag.String("target", "asset", "扫描目标：asset | personnel | dept | all")
 	rawPrefix := flag.String("raw", "", "原始响应落盘前缀（每页一个文件），留空则不落盘")
-	code := flag.String("code", "12020302000003", "重点展开的业务编码（资产编码 / 人员工号）")
+	code := flag.String("code", "12020302000003", "重点展开的业务编码（资产编码 / 人员工号 / 组织编码）")
 	baselineDir := flag.String("baseline-dir", "docs", "指纹基线目录；文件不存在时自动创建")
 	baselineOverride := flag.String("baseline", "", "显式指定基线文件（仅单目标扫描时有效）")
 	updateBaseline := flag.Bool("update", false, "用本次扫描覆盖基线（默认只对比不写）")

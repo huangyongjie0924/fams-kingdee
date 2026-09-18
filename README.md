@@ -61,27 +61,39 @@ dry-run 的数字与实跑一致。它内部维护一份「模拟落库后」的
 ### 星瀚接口字段扫描
 
 ```bash
+# ⚠ 凭据从 .env 读入环境变量（config.go 只认 os.Getenv，不解析 .env）
+set -a && . ./.env && set +a
+
 # 扫描资产卡，并和上次的基线对比（基线不存在时自动创建）
 go run ./cmd/kdscan -config config.yaml
 
 # 扫描人员接口
 go run ./cmd/kdscan -config config.yaml -target personnel
 
-# 两个接口一起扫
+# 扫描部门（行政组织）接口
+go run ./cmd/kdscan -config config.yaml -target dept
+
+# 三个接口一起扫（资产卡 / 人员 / 部门）
 go run ./cmd/kdscan -config config.yaml -target all
 
-# 确认变化无误后，把本次结果存为新基线
+# 展开某个组织节点（-code 传组织编码）
+go run ./cmd/kdscan -config config.yaml -target dept -code 120108
+
+# 确认变化无误后，把本次结果存为新基线（-target all 时不能配 -update）
 go run ./cmd/kdscan -config config.yaml -update
 
 # 连"仅数量波动"的字段一起看
 go run ./cmd/kdscan -config config.yaml -v
 ```
 
-拉全量、列出所有字段与取值分布、展开明细子表（资产卡 `finentry` / 人员 `entryentity`）的全部键、
-统计同编码重复行，**并和上次扫描的字段指纹逐字段对比**。怀疑「字段取不到值 / 金额对不上」时先跑它。
+拉全量、列出所有字段与取值分布、展开明细子表（资产卡 `finentry` / 人员 `entryentity` /
+部门 `structure`）的全部键、统计同编码重复行，**并和上次扫描的字段指纹逐字段对比**。
+怀疑「字段取不到值 / 金额对不上」时先跑它。
 
-指纹基线：资产卡 `docs/kingdee-fields-baseline.json`，人员 `docs/kingdee-personnel-baseline.json`
-（`-baseline-dir` 可改目录）。指纹只记「字段在不在、有没有非零值、服务端生效的过滤条件」，
+指纹基线：资产卡 `docs/kingdee-fields-baseline.json`、
+人员 `docs/kingdee-personnel-baseline.json`、
+部门 `docs/kingdee-dept-baseline.json`（`-baseline-dir` 可改目录）。
+指纹只记「字段在不在、有没有非零值、服务端生效的过滤条件」，
 **不记具体值**——具体值天天在变，记进去只会把 diff 淹没在噪声里。
 
 对比结果按处理优先级分级：
@@ -94,6 +106,10 @@ go run ./cmd/kdscan -config config.yaml -v
 | `+ 新增*有值` | 多出来的键，且带值 | 要 |
 | `! 过滤条件变更` | 服务端生效的查询口径变了 | 要。行数会跟着变，且请求体覆盖不了 |
 | `· 计数变化` | 仅数量波动（新建卡、金额变动） | 不用，加 `-v` 才显示 |
+
+**返回 0 行会单独走一个分支**：只报「过滤条件/行数变了」，
+**不会**顺势报「所有字段消失」——0 行时字段本来就都不出现，
+把它当成"投影被清空"会把排查带偏（详见 `docs/星瀚人员接口字段探测.md` 第四节）。
 
 退出码：`0` 无重要变化 / `1` 检测到重要变化 / `2` 参数错误 / `3` 扫描失败。
 `1` 和 `3` 分开是有意的——`1` 是「接口变了，人来看看」，`3` 是「这次没扫成，结果不可信」。
@@ -114,8 +130,15 @@ go run ./cmd/kdscan -config config.yaml -v
 > 唯一能看见它的地方是响应里 `data.filter` 的回显——所以指纹必须把它记下来。
 > 详见 `docs/星瀚人员接口字段探测.md`。
 >
+> 同一天 13:20 再扫，人员接口已恢复成 `[null]` / 5038 行，**并且投影被补齐了**：
+> `entryentity` 从 4 个子字段变成 11 个，多了 `dpt_id` / `dpt_name` / `dpt_number`。
+> 同一次里资产卡的过滤条件也被改了（去掉了 `billstatus = 'C'`），
+> 而**行数仍是 227，字段也没变**——只比行数或只比字段名，这次变化完全看不见。
+> **这就是为什么指纹要同时记「过滤条件 + 字段 + 非零数」三样。**
+>
 > 所以「字段取不到值」的第一反应是**重扫**，而不是翻旧结论。
-> 资产卡侧的投影变更详见 `docs/星瀚接口字段扩展需求.md`。
+> 资产卡侧的投影变更详见 `docs/星瀚接口字段扩展需求.md`，
+> 部门接口与组织树详见 `docs/星瀚部门接口字段探测.md`。
 
 ### 星瀚 ↔ 台账 财务字段核对
 

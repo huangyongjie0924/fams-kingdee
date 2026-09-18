@@ -1,0 +1,307 @@
+{
+  "scanned_at": "2026-09-18 13:13:52",
+  "filter": "[structure.view.id = 1]",
+  "rows": 5203,
+  "unique_codes": 5203,
+  "fields": {
+    "city_id": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 2
+    },
+    "city_name": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 2
+    },
+    "city_number": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 2
+    },
+    "country_id": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 2
+    },
+    "country_name": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 2
+    },
+    "country_number": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 2
+    },
+    "createtime": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "creator_id": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "creator_name": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "creator_number": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "disabledate": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 7
+    },
+    "disabler_id": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 7
+    },
+    "disabler_name": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 7
+    },
+    "disabler_number": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 7
+    },
+    "enable": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5196
+    },
+    "id": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "modifier_id": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "modifier_name": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "modifier_number": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "modifytime": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "name": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "number": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "orgpattern_id": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "orgpattern_name": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "orgpattern_number": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "orgpattern_patterntype": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "simplename": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 1
+    },
+    "status": {
+      "kind": "scalar",
+      "present": 5203,
+      "nonzero": 5203
+    },
+    "structure": {
+      "kind": "array",
+      "present": 5203,
+      "nonzero": 5203
+    }
+  },
+  "nested": {
+    "structure": {
+      "fullname": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "id": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "isfreeze": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 309
+      },
+      "isleaf": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 6034
+      },
+      "level": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "longnumber": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "seq": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "view_enable": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "view_id": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "view_name": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "view_number": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "view_status": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "viewcreator_id": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7055
+      },
+      "viewcreator_name": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7055
+      },
+      "viewcreator_number": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7055
+      },
+      "viewenable": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "viewmodifier_id": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "viewmodifier_name": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "viewmodifier_number": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "vieworg_enable": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7011
+      },
+      "vieworg_id": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "vieworg_name": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "vieworg_number": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "vieworg_status": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      },
+      "viewparent_enable": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7025
+      },
+      "viewparent_id": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7035
+      },
+      "viewparent_name": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7035
+      },
+      "viewparent_number": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7035
+      },
+      "viewparent_status": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7035
+      },
+      "viewstatus": {
+        "kind": "scalar",
+        "present": 7056,
+        "nonzero": 7056
+      }
+    }
+  }
+}

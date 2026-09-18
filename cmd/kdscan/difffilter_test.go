@@ -190,6 +190,7 @@ func TestResolveSources(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Kingdee.QueryPath = "/v2/gcgs/fa/fa_asset_card/Select_AssetCard"
 	cfg.Kingdee.PersonnelQueryPath = "/v2/gcgs/base/bos_user/query-personnel"
+	cfg.Kingdee.DepartmentQueryPath = "/v2/gcgs/base/bos_adminorg/query-department"
 
 	t.Run("默认只扫资产卡且基线文件名不变", func(t *testing.T) {
 		srcs, err := resolveSources(cfg, "asset", "docs", "")
@@ -226,8 +227,21 @@ func TestResolveSources(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(srcs) != 2 {
-			t.Fatalf("期望 2 个目标，实际 %d", len(srcs))
+		if len(srcs) != 3 {
+			t.Fatalf("期望 3 个目标，实际 %d", len(srcs))
+		}
+	})
+
+	t.Run("部门", func(t *testing.T) {
+		srcs, err := resolveSources(cfg, "dept", "docs", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if srcs[0].path != "/v2/gcgs/base/bos_adminorg/query-department" {
+			t.Errorf("部门接口路径不对: %s", srcs[0].path)
+		}
+		if srcs[0].baseline != "docs/kingdee-dept-baseline.json" {
+			t.Errorf("部门基线路径不对: %s", srcs[0].baseline)
 		}
 	})
 

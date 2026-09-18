@@ -1,6 +1,6 @@
 {
-  "scanned_at": "2026-09-18 12:09:40",
-  "filter": "[((org.number = '1202' OR org.number = '1201') AND billstatus = 'C')]",
+  "scanned_at": "2026-09-18 13:19:42",
+  "filter": "[(org.number = '1201' OR org.number = '1202')]",
   "rows": 227,
   "unique_codes": 200,
   "fields": {
