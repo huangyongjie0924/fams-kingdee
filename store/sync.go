@@ -13,9 +13,12 @@ import (
 )
 
 // CreateSyncRun 创建一条同步运行记录。
-func (s *Store) CreateSyncRun(tx *sql.Tx, source, mode, triggeredBy, cursor string) (int64, error) {
-	res, err := tx.Exec(`INSERT INTO sync_run (source, mode, triggered_by, cursor_value, status)
-		VALUES (?, ?, ?, ?, ?)`, source, mode, triggeredBy, cursor, model.SyncStatusRunning)
+//
+// resource 区分同步的资源类型（asset_card / org）。不区分的话，
+// 资产卡和组织主数据的跑批混在同一张列表里，看不出某次是同步什么失败。
+func (s *Store) CreateSyncRun(tx *sql.Tx, source, resource, mode, triggeredBy, cursor string) (int64, error) {
+	res, err := tx.Exec(`INSERT INTO sync_run (source, resource, mode, triggered_by, cursor_value, status)
+		VALUES (?, ?, ?, ?, ?, ?)`, source, resource, mode, triggeredBy, cursor, model.SyncStatusRunning)
 	if err != nil {
 		return 0, fmt.Errorf("create sync_run: %w", err)
 	}

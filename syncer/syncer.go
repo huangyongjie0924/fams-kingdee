@@ -101,7 +101,7 @@ func (s *Service) Run(ctx context.Context, mode, triggeredBy string) (*model.Syn
 		cursor = state.CursorValue
 	}
 
-	runID, err := s.st.CreateSyncRun(tx, sourceName, mode, triggeredBy, cursor)
+	runID, err := s.st.CreateSyncRun(tx, sourceName, resourceCard, mode, triggeredBy, cursor)
 	if err != nil {
 		return nil, err
 	}

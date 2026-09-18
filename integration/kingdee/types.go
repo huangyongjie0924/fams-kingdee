@@ -12,6 +12,9 @@ type Config struct {
 	PageSize       int
 	MaxRetries     int
 	QueryPath      string
+	// 组织主数据接口路径：部门（行政组织）与人员
+	PersonnelQueryPath  string
+	DepartmentQueryPath string
 }
 
 type AssetCard struct {

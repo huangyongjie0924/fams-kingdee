@@ -12,6 +12,9 @@
             <el-table-column prop="code" label="编码" width="120" />
             <el-table-column prop="tax_no" label="税号" width="200" />
             <el-table-column prop="sort_index" label="排序" width="90" align="right" />
+            <el-table-column label="来源" width="100">
+              <template #default="{ row }"><SourceTag :source="row.source" /></template>
+            </el-table-column>
             <el-table-column v-if="auth.can('master.manage')" label="操作" width="140" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openCompany(row)">编辑</el-button>
@@ -24,6 +27,7 @@
             <div v-for="row in companies" :key="row.id" class="m-card">
               <div class="m-card-hd">
                 <span class="m-title">{{ row.name }}</span>
+                <SourceTag :source="row.source" />
               </div>
               <div class="m-grid">
                 <span class="k">编码</span><span>{{ row.code || "-" }}</span>
@@ -48,7 +52,19 @@
             <el-table-column prop="name" label="部门名称" min-width="200" />
             <el-table-column prop="code" label="编码" width="120" />
             <el-table-column prop="company_name" label="所属公司" width="180" />
+            <el-table-column label="层级" width="70" align="right">
+              <template #default="{ row }">{{ row.level || "—" }}</template>
+            </el-table-column>
+            <!-- 组织路径是归属判定的依据，出问题时靠它自证，不用再翻接口 -->
+            <el-table-column prop="longnumber" label="组织路径" min-width="240" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="mono">{{ row.longnumber || "—" }}</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="sort_index" label="排序" width="90" align="right" />
+            <el-table-column label="来源" width="100">
+              <template #default="{ row }"><SourceTag :source="row.source" /></template>
+            </el-table-column>
             <el-table-column v-if="auth.can('master.manage')" label="操作" width="140" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openDept(row)">编辑</el-button>
@@ -61,6 +77,7 @@
             <div v-for="row in departments" :key="row.id" class="m-card">
               <div class="m-card-hd">
                 <span class="m-title">{{ row.name }}</span>
+                <SourceTag :source="row.source" />
               </div>
               <div class="m-grid">
                 <span class="k">编码</span><span>{{ row.code || "-" }}</span>
@@ -94,6 +111,9 @@
                 <el-tag :type="row.active ? 'success' : 'info'" size="small">{{ row.active ? "在职" : "离职" }}</el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="来源" width="100">
+              <template #default="{ row }"><SourceTag :source="row.source" /></template>
+            </el-table-column>
             <el-table-column v-if="auth.can('master.manage')" label="操作" width="140" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openEmp(row)">编辑</el-button>
@@ -107,6 +127,7 @@
               <div class="m-card-hd">
                 <span class="m-title">{{ row.name }}</span>
                 <el-tag :type="row.active ? 'success' : 'info'" size="small">{{ row.active ? "在职" : "离职" }}</el-tag>
+                <SourceTag :source="row.source" />
               </div>
               <div class="m-grid">
                 <span class="k">工号</span><span>{{ row.emp_no || "-" }}</span>
@@ -126,6 +147,15 @@
     </el-card>
 
     <el-dialog v-model="companyDialog" :title="company.id ? '编辑公司' : '新增公司'" width="440px" :fullscreen="isMobile">
+      <el-alert
+        v-if="company.source === 'kingdee'"
+        class="managed-tip"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="该行由星瀚同步托管"
+        description="名称、编码会在下次组织同步时被星瀚数据覆盖，本地修改只在下一次同步前有效。"
+      />
       <el-form :model="company" :label-width="isMobile ? 'auto' : '90px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="公司名称"><el-input v-model="company.name" /></el-form-item>
         <el-form-item label="编码"><el-input v-model="company.code" /></el-form-item>
@@ -141,6 +171,15 @@
     </el-dialog>
 
     <el-dialog v-model="deptDialog" :title="dept.id ? '编辑部门' : '新增部门'" width="440px" :fullscreen="isMobile">
+      <el-alert
+        v-if="dept.source === 'kingdee'"
+        class="managed-tip"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="该部门由星瀚同步托管"
+        description="名称、编码、上级部门、所属公司都由星瀚的组织路径推导，下次同步会整体覆盖本地修改。"
+      />
       <el-form :model="dept" :label-width="isMobile ? 'auto' : '90px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="部门名称"><el-input v-model="dept.name" /></el-form-item>
         <el-form-item label="编码"><el-input v-model="dept.code" /></el-form-item>
@@ -166,6 +205,15 @@
     </el-dialog>
 
     <el-dialog v-model="empDialog" :title="emp.id ? '编辑员工' : '新增员工'" width="440px" :fullscreen="isMobile">
+      <el-alert
+        v-if="emp.source === 'kingdee'"
+        class="managed-tip"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="该员工由星瀚同步托管"
+        description="姓名、部门、公司、在职状态会在下次组织同步时被星瀚数据覆盖。"
+      />
       <el-form :model="emp" :label-width="isMobile ? 'auto' : '90px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="姓名"><el-input v-model="emp.name" /></el-form-item>
         <el-form-item label="工号"><el-input v-model="emp.emp_no" /></el-form-item>
@@ -198,6 +246,7 @@ import { Plus } from "@element-plus/icons-vue";
 import http from "../../api/client";
 import { auth } from "../../stores/auth";
 import { useIsMobile } from "../../composables/useIsMobile";
+import SourceTag from "../../components/SourceTag.vue";
 
 const isMobile = useIsMobile();
 const tab = ref("company");
@@ -271,7 +320,14 @@ async function saveEmp() {
 }
 
 async function remove(path: string, row: any, reload: () => Promise<void>) {
-  await ElMessageBox.confirm(`确认删除「${row.name}」？被资产引用的记录不允许删除。`, "提示", { type: "warning" });
+  // 星瀚托管的行删了也会在下次同步时被重新建出来，先说清楚再让人确认
+  const extra =
+    row.source === "kingdee"
+      ? "\n\n注意：该行由星瀚同步托管，删除后会在下次组织同步时重新建立。"
+      : "";
+  await ElMessageBox.confirm(`确认删除「${row.name}」？被资产引用的记录不允许删除。${extra}`, "提示", {
+    type: "warning",
+  });
   await http.delete(`/${path}/${row.id}`);
   ElMessage.success("已删除");
   await reload();

@@ -108,17 +108,7 @@ func main() {
 	}
 	defer st.Close()
 
-	client, err := kingdee.NewClient(kingdee.Config{
-		BaseURL:        cfg.Kingdee.BaseURL,
-		ClientID:       cfg.Kingdee.ClientID,
-		ClientSecret:   cfg.Kingdee.ClientSecret,
-		Username:       cfg.Kingdee.Username,
-		AccountID:      cfg.Kingdee.AccountID,
-		RequestTimeout: cfg.Kingdee.RequestTimeout,
-		PageSize:       cfg.Kingdee.PageSize,
-		MaxRetries:     cfg.Kingdee.MaxRetries,
-		QueryPath:      cfg.Kingdee.QueryPath,
-	})
+	client, err := kingdee.NewClient(cfg.KingdeeClientConfig())
 	if err != nil {
 		log.Fatalf("创建金蝶客户端失败: %v", err)
 	}

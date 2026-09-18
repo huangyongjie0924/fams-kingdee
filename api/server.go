@@ -97,6 +97,8 @@ func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sync/status", s.handleSyncStatus)
 	mux.HandleFunc("POST /api/sync/test-connect", s.requirePerm(model.PermSyncManage, s.handleSyncTestConnect))
 	mux.HandleFunc("POST /api/sync/run", s.requirePerm(model.PermSyncManage, s.handleSyncRun))
+	// 组织主数据（部门 / 人员）同步：范围固定在 1201、1202 两棵子树，只做全量。
+	mux.HandleFunc("POST /api/sync/org", s.requirePerm(model.PermSyncManage, s.handleSyncOrg))
 	mux.HandleFunc("GET /api/sync/runs", s.handleSyncRuns)
 	mux.HandleFunc("GET /api/sync/runs/{id}/errors", s.handleSyncRunErrors)
 

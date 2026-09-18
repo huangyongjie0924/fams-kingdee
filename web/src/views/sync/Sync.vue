@@ -30,6 +30,15 @@
           >
             全量同步
           </el-button>
+          <el-button
+            v-if="auth.can('sync.manage')"
+            type="success"
+            :loading="running === 'org'"
+            :disabled="!info.configured || running !== ''"
+            @click="runOrg"
+          >
+            同步部门与人员
+          </el-button>
         </div>
       </template>
 
@@ -111,12 +120,20 @@
         <div class="head">
           <span>运行记录</span>
           <span class="spacer" />
+          <el-radio-group v-model="runFilter" size="small" @change="reloadRuns">
+            <el-radio-button value="">全部</el-radio-button>
+            <el-radio-button value="asset_card">资产卡</el-radio-button>
+            <el-radio-button value="org">部门与人员</el-radio-button>
+          </el-radio-group>
           <el-button :icon="Refresh" @click="reloadRuns">刷新</el-button>
         </div>
       </template>
 
       <el-table :data="runs" border v-loading="loadingRuns" @row-click="openErrors">
         <el-table-column prop="id" label="批次" width="70" />
+        <el-table-column label="资源" width="100">
+          <template #default="{ row }">{{ resourceLabel(row.resource) }}</template>
+        </el-table-column>
         <el-table-column label="模式" width="80">
           <template #default="{ row }">{{ modeLabel(row.mode) }}</template>
         </el-table-column>
@@ -156,6 +173,96 @@
         <el-button v-if="runs.length >= PAGE" :loading="loadingRuns" @click="loadMore">加载更多</el-button>
       </div>
     </el-card>
+
+    <el-dialog v-model="orgDialog" title="部门与人员同步结果" width="820px">
+      <template v-if="orgResult">
+        <el-alert
+          v-if="orgResult.dry_run"
+          class="alert"
+          type="info"
+          :closable="false"
+          show-icon
+          title="演练模式：只统计影响面，未写库"
+          description="关闭 dry_run 后重启服务，再执行一次才会真正落库。"
+        />
+
+        <el-descriptions :column="2" border class="desc">
+          <el-descriptions-item label="同步范围">
+            <span v-for="r in orgResult.plan?.scope_roots || []" :key="r" class="mono">{{ r }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="本次结果">
+            {{ orgResult.dry_run ? "将新建" : "已新建" }} {{ orgResult.created }} /
+            {{ orgResult.dry_run ? "将更新" : "已更新" }} {{ orgResult.updated }}
+          </el-descriptions-item>
+          <el-descriptions-item label="部门接口">
+            {{ orgResult.source?.dept_rows }} 行，范围内 {{ orgResult.source?.dept_in_scope }} 个节点
+          </el-descriptions-item>
+          <el-descriptions-item label="人员接口">
+            {{ orgResult.source?.people_rows }} 行，范围内 {{ orgResult.source?.people_in_scope }} 人
+          </el-descriptions-item>
+          <el-descriptions-item label="落库计划">
+            公司 {{ orgResult.plan?.companies }} / 部门 {{ orgResult.plan?.departments }} / 员工
+            {{ orgResult.plan?.employees }}
+          </el-descriptions-item>
+          <el-descriptions-item label="部门按归属公司">
+            <span v-for="(n, code) in orgResult.plan?.by_company || {}" :key="code" class="mono">{{ code }}={{ n }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="服务端过滤（部门）" :span="2">
+            <span class="mono">{{ orgResult.source?.dept_filter }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="服务端过滤（人员）" :span="2">
+            <span class="mono">{{ orgResult.source?.people_filter }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 一人多部门是 employee.dept_id 单值化必须交代清楚的口径 -->
+        <el-alert
+          v-if="orgResult.plan?.multi_dept"
+          class="alert"
+          type="info"
+          :closable="false"
+          show-icon
+          :title="`其中 ${orgResult.plan.multi_dept} 人挂在多个部门下`"
+          description="员工表只存一个部门，取 1201 优先、其次编码最小者；全部候选仍保留在星瀚侧，可随时复核。"
+        />
+
+        <!-- 检查没跑成与没有冲突，对使用者的含义完全相反，所以分开呈现 -->
+        <el-alert
+          v-if="orgResult.conflict_err"
+          class="alert"
+          type="error"
+          :closable="false"
+          show-icon
+          title="同名冲突检查未跑成"
+          :description="orgResult.conflict_err"
+        />
+        <template v-else-if="(orgResult.conflicts || []).length">
+          <el-alert
+            class="alert"
+            type="warning"
+            :closable="false"
+            show-icon
+            :title="`同名冲突 ${orgResult.conflicts.length} 处`"
+            description="本地手工数据与星瀚同名但不是同一行。同步按编码匹配、不按名称兜底，所以两者并存，需人工决定手工行去留。"
+          />
+          <el-table :data="orgResult.conflicts" border max-height="240">
+            <el-table-column label="类别" width="90">
+              <template #default="{ row }">{{ kindLabel(row.kind) }}</template>
+            </el-table-column>
+            <el-table-column prop="name" label="名称" min-width="180" />
+            <el-table-column label="手工行 ID" width="140">
+              <template #default="{ row }">{{ (row.manual_ids || []).join(", ") }}</template>
+            </el-table-column>
+            <el-table-column label="同步行 ID" width="140">
+              <template #default="{ row }">{{ syncedIDs(row) }}</template>
+            </el-table-column>
+          </el-table>
+        </template>
+      </template>
+      <template #footer>
+        <el-button @click="orgDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="errDialog" :title="`批次 #${errRun?.id} 错误明细`" width="900px">
       <el-table :data="errors" border v-loading="loadingErrors" max-height="440">
@@ -201,12 +308,16 @@ const runs = ref<any[]>([]);
 const errors = ref<any[]>([]);
 const errRun = ref<any>(null);
 const errDialog = ref(false);
+// 运行记录按资源过滤：资产卡与组织同步写的是同一张 sync_run 表
+const runFilter = ref("");
+const orgDialog = ref(false);
+const orgResult = ref<any>(null);
 const testing = ref(false);
 const running = ref("");
 const loadingRuns = ref(false);
 const loadingErrors = ref(false);
 
-const latest = computed(() => (runs.value.length ? runs.value[0] : null));
+const latest = computed(() => info.value.latest_run || null);
 // 未启用定时同步时后端给的是 { enabled: false }，这里兜住 null 的情况
 const sched = computed(() => info.value.scheduler || { enabled: false });
 
@@ -218,7 +329,9 @@ async function loadStatus() {
 async function reloadRuns() {
   loadingRuns.value = true;
   try {
-    const { data } = await http.get("/sync/runs", { params: { limit: PAGE, offset: 0 } });
+    const { data } = await http.get("/sync/runs", {
+      params: { limit: PAGE, offset: 0, resource: runFilter.value },
+    });
     runs.value = data || [];
   } finally {
     loadingRuns.value = false;
@@ -228,7 +341,9 @@ async function reloadRuns() {
 async function loadMore() {
   loadingRuns.value = true;
   try {
-    const { data } = await http.get("/sync/runs", { params: { limit: PAGE, offset: runs.value.length } });
+    const { data } = await http.get("/sync/runs", {
+      params: { limit: PAGE, offset: runs.value.length, resource: runFilter.value },
+    });
     runs.value = runs.value.concat(data || []);
   } finally {
     loadingRuns.value = false;
@@ -261,6 +376,49 @@ async function run(mode: "incremental" | "full") {
     running.value = "";
     await loadAll();
   }
+}
+
+// 组织同步只做全量、范围固定，没有 mode 可选；结果走弹窗展示，
+// 因为它要交代的东西（范围、过滤条件、计划、同名冲突）比一行 ElMessage 多得多。
+async function runOrg() {
+  running.value = "org";
+  try {
+    const { data } = await http.post("/sync/org", {}, { timeout: RUN_TIMEOUT });
+    orgResult.value = data;
+    orgDialog.value = true;
+    if (data.conflict_err) {
+      ElMessage.warning("同步完成，但同名冲突检查未跑成，请查看弹窗提示");
+    } else if ((data.conflicts || []).length) {
+      ElMessage.warning(`同步完成，发现 ${data.conflicts.length} 处同名冲突`);
+    } else {
+      ElMessage.success(
+        `${data.dry_run ? "演练完成" : "同步完成"}：${data.dry_run ? "将新建" : "新建"} ${data.created}、` +
+          `${data.dry_run ? "将更新" : "更新"} ${data.updated}`,
+      );
+    }
+  } finally {
+    running.value = "";
+    await loadAll();
+  }
+}
+
+function resourceLabel(r: string) {
+  if (r === "org") return "部门与人员";
+  if (r === "asset_card") return "资产卡";
+  return r || "—";
+}
+
+function kindLabel(k: string) {
+  if (k === "department") return "部门";
+  if (k === "employee") return "员工";
+  if (k === "company") return "公司";
+  return k || "—";
+}
+
+// 同步行的 ID 列表。dry-run 下「将会新建」用 0 占位，显示成文字比显示 0 好懂。
+function syncedIDs(row: any) {
+  const ids: number[] = row?.synced_ids || [];
+  return ids.length ? ids.map((i) => (i === 0 ? "将新建" : i)).join(", ") : "—";
 }
 
 async function openErrors(row: any) {

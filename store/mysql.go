@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"asset-mgr/model"
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -66,6 +68,49 @@ func (s *Store) migrate() error {
 	if err := s.addColumnIfMissing("sys_user", "dept_id", "BIGINT NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	return s.migrateOrg()
+}
+
+// migrateOrg 是组织主数据（公司 / 部门 / 员工）从星瀚同步所需的新增列。
+//
+// 为什么要记 source：这三张表原本是手工维护的，现在改由星瀚托管。
+// 不标来源的话，人工建的部门和同步进来的部门混在一起，
+// 出了问题分不清「是星瀚数据不对」还是「谁手工改过」。
+// 更实际的是：同步只该覆盖 source='kingdee' 的行，
+// 手工建的行保留本地值（与资产卡的「托管字段」是同一套思路）。
+func (s *Store) migrateOrg() error {
+	// department：组织树的位置与状态。parent_id / company_id 是本地 ID，
+	// 这两个才是落库真正要用的；longnumber / level 是星瀚侧的原始坐标，
+	// 保留下来是为了让「为什么这个部门挂到这家公司」在库里能自证。
+	for _, c := range []struct{ col, def string }{
+		{"longnumber", "VARCHAR(255) NOT NULL DEFAULT ''"},
+		{"level", "INT NOT NULL DEFAULT 0"},
+		{"enabled", "TINYINT(1) NOT NULL DEFAULT 1"},
+		{"source", "VARCHAR(16) NOT NULL DEFAULT ''"},
+	} {
+		if err := s.addColumnIfMissing("department", c.col, c.def); err != nil {
+			return err
+		}
+	}
+	for _, t := range []string{"employee", "company"} {
+		if err := s.addColumnIfMissing(t, "source", "VARCHAR(16) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
+	// 同步时按 longnumber 前缀判范围、按 code 找本地行，都要走索引
+	if err := s.createIndexIfMissing("department", "idx_dept_code", "(code)"); err != nil {
+		return err
+	}
+	// sync_run 原本只有资产卡一种资源，组织同步的跑批混在里面分不出来。
+	//
+	// 新增列后必须回填一次：历史行全部是资产卡同步留下的，而新列默认是空串。
+	// 不回填的话，`WHERE resource = 'asset_card'` 会把它们全部挡掉——
+	// 表现就是前端「最近一次运行」和资源筛选双双变成空的，历史批次看起来凭空消失。
+	if err := s.addColumnIfMissingBackfill("sync_run", "resource",
+		"VARCHAR(64) NOT NULL DEFAULT ''",
+		fmt.Sprintf("UPDATE sync_run SET resource = '%s' WHERE resource = ''", model.ResourceAssetCard)); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -100,6 +145,15 @@ func (s *Store) dropIndexIfExists(table, index string) error {
 }
 
 func (s *Store) addColumnIfMissing(table, column, definition string) error {
+	return s.addColumnIfMissingBackfill(table, column, definition, "")
+}
+
+// addColumnIfMissingBackfill 与 addColumnIfMissing 相同，但在新增列之后立刻执行一条回填 SQL。
+//
+// 回填只在列确实不存在时执行，所以它天然只跑一次，不会在每次启动时重复改写数据。
+// 用它而不是「每次启动都 UPDATE ... WHERE col = ”」：后者会在将来某次
+// 真的插入了空值行时把数据悄悄改成另一个资源，而那种错误比缺一次回填难查得多。
+func (s *Store) addColumnIfMissingBackfill(table, column, definition, backfill string) error {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM information_schema.columns
 		WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`, table, column).Scan(&n); err != nil {
@@ -111,6 +165,11 @@ func (s *Store) addColumnIfMissing(table, column, definition string) error {
 	if _, err := s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition)); err != nil {
 		return fmt.Errorf("add column %s.%s: %w", table, column, err)
 	}
+	if backfill != "" {
+		if _, err := s.db.Exec(backfill); err != nil {
+			return fmt.Errorf("backfill %s.%s: %w", table, column, err)
+		}
+	}
 	return nil
 }
 
@@ -121,6 +180,7 @@ var schema = []string{
 		code VARCHAR(64) NOT NULL DEFAULT '',
 		tax_no VARCHAR(64) NOT NULL DEFAULT '',
 		sort_index INT NOT NULL DEFAULT 0,
+		source VARCHAR(16) NOT NULL DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		UNIQUE KEY uk_company_name (name)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -132,9 +192,14 @@ var schema = []string{
 		parent_id BIGINT NOT NULL DEFAULT 0,
 		company_id BIGINT NOT NULL DEFAULT 0,
 		sort_index INT NOT NULL DEFAULT 0,
+		longnumber VARCHAR(255) NOT NULL DEFAULT '',
+		level INT NOT NULL DEFAULT 0,
+		enabled TINYINT(1) NOT NULL DEFAULT 1,
+		source VARCHAR(16) NOT NULL DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		KEY idx_dept_parent (parent_id),
-		KEY idx_dept_company (company_id)
+		KEY idx_dept_company (company_id),
+		KEY idx_dept_code (code)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
 	`CREATE TABLE IF NOT EXISTS employee (
@@ -145,6 +210,7 @@ var schema = []string{
 		company_id BIGINT NOT NULL DEFAULT 0,
 		phone VARCHAR(32) NOT NULL DEFAULT '',
 		active TINYINT(1) NOT NULL DEFAULT 1,
+		source VARCHAR(16) NOT NULL DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		KEY idx_emp_dept (dept_id),
 		KEY idx_emp_name (name)
@@ -337,6 +403,7 @@ var schema = []string{
 	`CREATE TABLE IF NOT EXISTS sync_run (
 		id BIGINT AUTO_INCREMENT PRIMARY KEY,
 		source VARCHAR(32) NOT NULL DEFAULT 'kingdee',
+		resource VARCHAR(64) NOT NULL DEFAULT '',
 		mode VARCHAR(16) NOT NULL,
 		triggered_by VARCHAR(64) NOT NULL DEFAULT '',
 		cursor_value VARCHAR(64) NOT NULL DEFAULT '',

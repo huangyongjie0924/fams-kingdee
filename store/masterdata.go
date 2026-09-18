@@ -126,7 +126,8 @@ func (s *Store) DeleteDepartment(id int64) error {
 func (s *Store) DeleteEmployee(id int64) error { return s.deleteRef("employee", "manager_emp_id", id) }
 
 func (s *Store) ListCompanies() ([]model.Company, error) {
-	rows, err := s.db.Query(`SELECT id, name, code, tax_no, sort_index FROM company ORDER BY sort_index, id`)
+	rows, err := s.db.Query(`SELECT id, name, code, tax_no, sort_index, COALESCE(source,'')
+		FROM company ORDER BY sort_index, id`)
 	if err != nil {
 		return nil, fmt.Errorf("query companies: %w", err)
 	}
@@ -134,7 +135,7 @@ func (s *Store) ListCompanies() ([]model.Company, error) {
 	out := []model.Company{}
 	for rows.Next() {
 		var c model.Company
-		if err := rows.Scan(&c.ID, &c.Name, &c.Code, &c.TaxNo, &c.SortIndex); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Code, &c.TaxNo, &c.SortIndex, &c.Source); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -157,7 +158,8 @@ func (s *Store) SaveCompany(c *model.Company) (int64, error) {
 }
 
 func (s *Store) ListDepartments() ([]model.Department, error) {
-	rows, err := s.db.Query(`SELECT d.id, d.name, d.code, d.parent_id, d.company_id, COALESCE(co.name,''), d.sort_index
+	rows, err := s.db.Query(`SELECT d.id, d.name, d.code, d.parent_id, d.company_id, COALESCE(co.name,''),
+		d.sort_index, COALESCE(d.longnumber,''), d.level, d.enabled, COALESCE(d.source,'')
 		FROM department d LEFT JOIN company co ON co.id = d.company_id ORDER BY d.sort_index, d.id`)
 	if err != nil {
 		return nil, fmt.Errorf("query departments: %w", err)
@@ -166,7 +168,8 @@ func (s *Store) ListDepartments() ([]model.Department, error) {
 	out := []model.Department{}
 	for rows.Next() {
 		var d model.Department
-		if err := rows.Scan(&d.ID, &d.Name, &d.Code, &d.ParentID, &d.CompanyID, &d.CompanyName, &d.SortIndex); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &d.Code, &d.ParentID, &d.CompanyID, &d.CompanyName,
+			&d.SortIndex, &d.LongNumber, &d.Level, &d.Enabled, &d.Source); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -190,7 +193,7 @@ func (s *Store) SaveDepartment(d *model.Department) (int64, error) {
 
 func (s *Store) ListEmployees(keyword string) ([]model.Employee, error) {
 	q := `SELECT e.id, e.emp_no, e.name, e.dept_id, COALESCE(d.name,''), e.company_id, COALESCE(co.name,''),
-		e.phone, e.active
+		e.phone, e.active, COALESCE(e.source,'')
 		FROM employee e
 		LEFT JOIN department d ON d.id = e.dept_id
 		LEFT JOIN company co ON co.id = e.company_id`
@@ -210,7 +213,7 @@ func (s *Store) ListEmployees(keyword string) ([]model.Employee, error) {
 	for rows.Next() {
 		var e model.Employee
 		if err := rows.Scan(&e.ID, &e.EmpNo, &e.Name, &e.DeptID, &e.DeptName, &e.CompanyID,
-			&e.CompanyName, &e.Phone, &e.Active); err != nil {
+			&e.CompanyName, &e.Phone, &e.Active, &e.Source); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

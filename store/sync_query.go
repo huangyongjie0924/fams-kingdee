@@ -8,14 +8,24 @@ import (
 )
 
 // ListSyncRuns 查询同步运行记录，按开始时间倒序。
-func (s *Store) ListSyncRuns(limit, offset int) ([]model.SyncRun, error) {
+// ListSyncRuns 列出同步运行记录。resource 为空表示不限资源类型。
+func (s *Store) ListSyncRuns(resource string, limit, offset int) ([]model.SyncRun, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	rows, err := s.db.Query(`SELECT id, source, mode, triggered_by, cursor_value, status,
+	q := `SELECT id, source, resource, mode, triggered_by, cursor_value, status,
 		total_count, created_count, updated_count, skipped_count, deleted_count, failed_count,
 		error_summary, started_at, finished_at
-		FROM sync_run ORDER BY started_at DESC LIMIT ? OFFSET ?`, limit, offset)
+		FROM sync_run`
+	args := []any{}
+	if resource != "" {
+		q += ` WHERE resource = ?`
+		args = append(args, resource)
+	}
+	q += ` ORDER BY started_at DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query sync_run: %w", err)
 	}
@@ -25,7 +35,7 @@ func (s *Store) ListSyncRuns(limit, offset int) ([]model.SyncRun, error) {
 	for rows.Next() {
 		var r model.SyncRun
 		var t sql.NullTime
-		if err := rows.Scan(&r.ID, &r.Source, &r.Mode, &r.TriggeredBy, &r.CursorValue, &r.Status,
+		if err := rows.Scan(&r.ID, &r.Source, &r.Resource, &r.Mode, &r.TriggeredBy, &r.CursorValue, &r.Status,
 			&r.TotalCount, &r.CreatedCount, &r.UpdatedCount, &r.SkippedCount, &r.DeletedCount, &r.FailedCount,
 			&r.ErrorSummary, &r.StartedAt, &t); err != nil {
 			return nil, err
@@ -42,11 +52,11 @@ func (s *Store) ListSyncRuns(limit, offset int) ([]model.SyncRun, error) {
 func (s *Store) GetSyncRun(id int64) (*model.SyncRun, error) {
 	var r model.SyncRun
 	var t sql.NullTime
-	err := s.db.QueryRow(`SELECT id, source, mode, triggered_by, cursor_value, status,
+	err := s.db.QueryRow(`SELECT id, source, resource, mode, triggered_by, cursor_value, status,
 		total_count, created_count, updated_count, skipped_count, deleted_count, failed_count,
 		error_summary, started_at, finished_at
 		FROM sync_run WHERE id = ?`, id).
-		Scan(&r.ID, &r.Source, &r.Mode, &r.TriggeredBy, &r.CursorValue, &r.Status,
+		Scan(&r.ID, &r.Source, &r.Resource, &r.Mode, &r.TriggeredBy, &r.CursorValue, &r.Status,
 			&r.TotalCount, &r.CreatedCount, &r.UpdatedCount, &r.SkippedCount, &r.DeletedCount, &r.FailedCount,
 			&r.ErrorSummary, &r.StartedAt, &t)
 	if err == sql.ErrNoRows {

@@ -213,6 +213,9 @@ type Company struct {
 	Code      string `json:"code"`
 	TaxNo     string `json:"tax_no"`
 	SortIndex int    `json:"sort_index"`
+	// Source 标记数据来源：kingdee 表示由星瀚同步托管，空串表示本地手工维护。
+	// 同步只覆盖 kingdee 的行，手工建的行保留本地值。
+	Source string `json:"source,omitempty"`
 }
 
 type Department struct {
@@ -223,6 +226,13 @@ type Department struct {
 	CompanyID   int64  `json:"company_id"`
 	CompanyName string `json:"company_name,omitempty"`
 	SortIndex   int    `json:"sort_index"`
+	// LongNumber 是星瀚侧的组织路径（如 GCGS!GCGSHB!12!1201!120108）。
+	// 保留它是为了让「这个部门为什么挂到这家公司」在库里能自证：
+	// 归属判定完全靠它，出问题时不用再去翻接口。
+	LongNumber string `json:"longnumber,omitempty"`
+	Level      int    `json:"level,omitempty"`
+	Enabled    bool   `json:"enabled"`
+	Source     string `json:"source,omitempty"`
 }
 
 type Employee struct {
@@ -235,6 +245,7 @@ type Employee struct {
 	CompanyName string `json:"company_name,omitempty"`
 	Phone       string `json:"phone"`
 	Active      bool   `json:"active"`
+	Source      string `json:"source,omitempty"`
 }
 
 type Vendor struct {
@@ -356,6 +367,7 @@ type ExternalMasterMap struct {
 type SyncRun struct {
 	ID           int64      `json:"id"`
 	Source       string     `json:"source"`
+	Resource     string     `json:"resource"`
 	Mode         string     `json:"mode"`
 	TriggeredBy  string     `json:"triggered_by"`
 	CursorValue  string     `json:"cursor_value"`
@@ -406,6 +418,13 @@ const (
 	SyncStatusSuccess = "success"
 	SyncStatusFailed  = "failed"
 	SyncStatusPartial = "partial"
+)
+
+// 同步资源类型。sync_run.resource 用它区分一次跑批同步的是什么——
+// 资产卡和组织主数据的跑批混在一张列表里，不区分就看不出某次失败是同步什么。
+const (
+	ResourceAssetCard = "asset_card"
+	ResourceOrg       = "org"
 )
 
 // ExternalMapStatus 外部映射状态
