@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"asset-mgr/config"
@@ -127,4 +128,87 @@ func TestInspectSplitsVisibleAndSoftDeletedCards(t *testing.T) {
 	if len(r.BrokenCards) > 0 && broken == 0 {
 		t.Errorf("明细有 %d 条但汇总为 0，两者口径不一致", len(r.BrokenCards))
 	}
+}
+
+// TestInspectTreatsZeroRefsAsUnset 钉住「0 = 未设置」这个口径。
+//
+// 本地约定用 0 表示「没填」（不是外键值）。体检若把 0 当成悬空引用，
+// 就会把「本来就没指定使用部门」的卡报成断链——和漏统计软删除卡正好相反，
+// 是**虚报**影响面。
+//
+// 实测踩过一次：独立复核时临时写的 SQL 忘了 `> 0`，
+// 把 2 张卡（use_dept_id=0 / user_emp_id=0）和 1 个账号（employee_id=0）
+// 算成了断链，与工具自报的 0 对不上，差点当成回归去查。
+//
+// 注意不能简单地断言「带 0 哨兵的卡不进断链」——一张卡可以同时
+// 既没填使用部门（0）、又真的挂着一个已失效的权属公司。
+// 所以逐维核对：**报出来的那一维，引用值必须 > 0**。
+func TestInspectTreatsZeroRefsAsUnset(t *testing.T) {
+	db := testDB(t)
+
+	r, err := inspect(db)
+	if err != nil {
+		t.Fatalf("体检失败: %v", err)
+	}
+	if len(r.BrokenCards) == 0 {
+		t.Skip("当前库里没有断链卡，这条守卫没有可验证的对象")
+	}
+
+	type refs struct{ dept, emp, company int64 }
+	byCode := map[string]refs{}
+	rows, err := db.Query(`SELECT asset_code, use_dept_id, user_emp_id, owner_company_id
+		FROM asset_card WHERE deleted_at IS NULL`)
+	if err != nil {
+		t.Fatalf("查可见卡失败: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code string
+		var v refs
+		if err := rows.Scan(&code, &v.dept, &v.emp, &v.company); err != nil {
+			t.Fatalf("扫描失败: %v", err)
+		}
+		byCode[code] = v
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("遍历失败: %v", err)
+	}
+
+	for _, line := range r.BrokenCards {
+		code, rest, ok := strings.Cut(line, "（")
+		if !ok {
+			t.Errorf("明细行格式变了，守卫失效: %q", line)
+			continue
+		}
+		_, reason, ok := strings.Cut(rest, "缺 ")
+		if !ok {
+			t.Errorf("明细行格式变了，守卫失效: %q", line)
+			continue
+		}
+		v, found := byCode[code]
+		if !found {
+			t.Errorf("断链明细里的卡 %s 不在可见卡里——软删除的混进来了？", code)
+			continue
+		}
+		for _, dim := range strings.Split(reason, "/") {
+			switch dim {
+			case "部门":
+				if v.dept == 0 {
+					t.Errorf("卡 %s 报「缺部门」但 use_dept_id=0，把「未设置」当成了断链", code)
+				}
+			case "使用人":
+				if v.emp == 0 {
+					t.Errorf("卡 %s 报「缺使用人」但 user_emp_id=0，把「未设置」当成了断链", code)
+				}
+			case "权属公司":
+				if v.company == 0 {
+					t.Errorf("卡 %s 报「缺权属公司」但 owner_company_id=0，把「未设置」当成了断链", code)
+				}
+			default:
+				t.Errorf("明细行出现未知维度 %q: %q", dim, line)
+			}
+		}
+	}
+
+	t.Logf("可见卡 %d 张、断链 %d 张，逐维核对哨兵语义通过", r.Cards, len(r.BrokenCards))
 }
