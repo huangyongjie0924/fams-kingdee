@@ -49,23 +49,23 @@ func mkPerson(number, name string, deptNumbers ...string) kingdee.Personnel {
 
 // scopeFixture 造一份覆盖范围的完整组织树：
 //
-//	GCGS!GCGSHB!12!1201            某电器公司（公司）
+//	GCGS!GCGSHB!12!1201            XXX公司（公司）
 //	  GCGS!GCGSHB!12!1201!120101   公司领导
 //	    ...!120101!12010101        公司领导一组
 //	  GCGS!GCGSHB!12!1201!120108   品牌资产管理部
 //	  GCGS!GCGSHB!12!1201!1200151  业务支持中心二组（⚠ 编码"跨支"，不以 1201 开头）
-//	GCGS!GCGSHB!12!1202            某家电销售公司（公司）
+//	GCGS!GCGSHB!12!1202            YYY公司（公司）
 //	  GCGS!GCGSHB!12!1202!120210   品牌资产管理部
-//	GCGS!GCGSHB!12                  电器板块（合并）—— 范围外
+//	GCGS!GCGSHB!12                  XXX板块（合并）—— 范围外
 //	GCGS!GCGSHB!12!1203             范围外的兄弟公司
 //	GCGS!GCGSHB!0101!010104         范围外的部门
 func scopeFixture() []kingdee.Department {
 	return []kingdee.Department{
-		mkDept("GCGS", "某控股集团有限公司（集团）", "GCGS", "集团"),
-		mkDept("GCGSHB", "某控股集团有限公司（合并）", "GCGS!GCGSHB", "集团"),
-		mkDept("12", "某电器股份有限公司（合并）", "GCGS!GCGSHB!12", "公司"),
-		mkDept("1201", "某电器股份有限公司", "GCGS!GCGSHB!12!1201", "公司"),
-		mkDept("1202", "某家电销售股份有限公司", "GCGS!GCGSHB!12!1202", "公司"),
+		mkDept("GCGS", "ZZZ集团（集团）", "GCGS", "集团"),
+		mkDept("GCGSHB", "ZZZ集团（合并）", "GCGS!GCGSHB", "集团"),
+		mkDept("12", "XXX公司（合并）", "GCGS!GCGSHB!12", "公司"),
+		mkDept("1201", "XXX公司", "GCGS!GCGSHB!12!1201", "公司"),
+		mkDept("1202", "YYY公司", "GCGS!GCGSHB!12!1202", "公司"),
 		mkDept("1203", "范围外的兄弟公司", "GCGS!GCGSHB!12!1203", "公司"),
 		mkDept("120101", "公司领导", "GCGS!GCGSHB!12!1201!120101", "部门"),
 		mkDept("120108", "品牌资产管理部", "GCGS!GCGSHB!12!1201!120108", "部门"),
@@ -73,7 +73,7 @@ func scopeFixture() []kingdee.Department {
 		mkDept("1200151", "业务支持中心二组", "GCGS!GCGSHB!12!1201!120121!1200151", "部门"),
 		mkDept("12010101", "公司领导一组", "GCGS!GCGSHB!12!1201!120101!12010101", "部门"),
 		mkDept("120210", "品牌资产管理部", "GCGS!GCGSHB!12!1202!120210", "部门"),
-		mkDept("0101", "某资产经营管理有限公司", "GCGS!GCGSHB!0101", "公司"),
+		mkDept("0101", "WWW公司", "GCGS!GCGSHB!0101", "公司"),
 		mkDept("010104", "财务部", "GCGS!GCGSHB!0101!010104", "部门"),
 	}
 }
@@ -171,9 +171,9 @@ func TestBuildOrgPlanKeepsOnlyScope(t *testing.T) {
 func TestBuildOrgPlanCompanyDetectedByOrgPattern(t *testing.T) {
 	depts := []kingdee.Department{
 		// L4 的公司（常见形态）
-		mkDept("1201", "某电器公司", "GCGS!GCGSHB!12!1201", "公司"),
+		mkDept("1201", "XXX公司", "GCGS!GCGSHB!12!1201", "公司"),
 		// ⚠ 名字里带「公司」但形态是部门——不能当公司
-		mkDept("120128", "某电器公司", "GCGS!GCGSHB!12!1201!120128", "部门"),
+		mkDept("120128", "XXX公司", "GCGS!GCGSHB!12!1201!120128", "部门"),
 		// ⚠ 层级不在 L4 的公司
 		mkDept("120199", "深层的公司", "GCGS!GCGSHB!12!1201!120128!120199", "公司"),
 	}
@@ -344,7 +344,7 @@ func TestBuildOrgPlanAbortsOnEmptySource(t *testing.T) {
 func TestBuildOrgPlanAbortsWhenScopeMatchesNothing(t *testing.T) {
 	// 整棵树搬到了别的前缀下，范围里一个节点都没有
 	depts := []kingdee.Department{
-		mkDept("1201", "某电器公司", "GCGS!GCGSHB!99!1201", "公司"),
+		mkDept("1201", "XXX公司", "GCGS!GCGSHB!99!1201", "公司"),
 		mkDept("120108", "品牌资产管理部", "GCGS!GCGSHB!99!1201!120108", "部门"),
 	}
 	_, err := BuildOrgPlan(depts, "", []kingdee.Personnel{mkPerson("000001", "甲", "120108")}, "")

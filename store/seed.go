@@ -5,7 +5,7 @@ import "fmt"
 // Seed 只在对应表为空时写入，重复启动不会覆盖用户维护的数据。
 func (s *Store) Seed(codePrefix string, seqWidth int) error {
 	if err := s.seedIfEmpty("company", []string{
-		`INSERT INTO company (name, code, sort_index) VALUES ('某电器公司', 'SJ', 1)`,
+		`INSERT INTO company (name, code, sort_index) VALUES ('XXX公司', 'SJ', 1)`,
 	}); err != nil {
 		return err
 	}

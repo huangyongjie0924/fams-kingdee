@@ -17,7 +17,7 @@ import (
 
 // OrgScopeRoots 是组织同步范围的根节点路径（longnumber）。
 //
-// 口径由业务固定：只同步「12」（某电器股份有限公司（合并））下面的
+// 口径由业务固定：只同步「12」（XXX公司（合并））下面的
 // 1201、1202 两个法人，及其全部下级组织。
 //
 // 两个刻意的取舍：
@@ -52,7 +52,7 @@ var ErrOrgSourceEmpty = errors.New("星瀚组织数据为空，同步中止")
 type OrgCompany struct {
 	Code      string // 星瀚编码，如 1201
 	Name      string
-	ShortName string // simplename，如「某电器公司」
+	ShortName string // simplename，如「XXX公司」
 	Level     int
 	Enabled   bool
 }
@@ -269,14 +269,14 @@ func scopedDeptCodes(p *kingdee.Personnel, byNumber map[string]*kingdee.Departme
 
 // pickPrimaryDept 从候选里选一个主部门。
 //
-// 规则：优先取归属「1201」（某电器公司）的那条；没有则取编码最小的。
+// 规则：优先取归属「1201」（XXX公司）的那条；没有则取编码最小的。
 //
 // 为什么必须定这条规则：多数范围内人员在两个法人下各挂一条同一职位的记录。
 // 但台账 employee.dept_id 是单值，必须有个确定的、可解释的选择，
 // 否则同一个人两次同步可能落到不同部门。
 //
 // 选 1201 的理由：台账资产的权属公司分布是 1201 下 130 张、1202 下 70 张，
-// 且 1201 的 simplename「某电器公司」正是台账 company_name 里已经在用的写法。
+// 且 1201 的 simplename「XXX公司」正是台账 company_name 里已经在用的写法。
 //
 // ⚠ 必须记住的副作用：因为固定优先 1201，**1202 子树的部门在台账里会显示 0 员工**。
 // 这不是漏同步，也不是主数据残缺——那些人的主职被统一归到了 1201。

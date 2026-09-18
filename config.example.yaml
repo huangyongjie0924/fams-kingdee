@@ -37,7 +37,7 @@ code_rule:
   seq_width: 5                   # 流水号位数
 
 kingdee:
-  base_url: ""                   # 如 https://<your-kingdee-host>/ierp/kapi
+  base_url: ""                   # 如 https://fi.kingdee.com/ierp/kapi
   client_id: ""
   client_secret: ""
   username: ""
@@ -53,7 +53,7 @@ kingdee:
   department_query_path: "/v2/gcgs/base/bos_adminorg/query-department"
 
 yunzhijia:
-  base_url: ""                   # 如 https://<your-yunzhijia-host>
+  base_url: ""                   # 如 https://yunzhijia.com
   app_id: ""
   secret: ""
 
