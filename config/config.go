@@ -39,15 +39,16 @@ type Config struct {
 	} `yaml:"code_rule"`
 
 	Kingdee struct {
-		BaseURL        string `yaml:"base_url"`
-		ClientID       string `yaml:"client_id"`
-		ClientSecret   string `yaml:"client_secret"`
-		Username       string `yaml:"username"`
-		AccountID      string `yaml:"account_id"`
-		RequestTimeout int    `yaml:"request_timeout"`
-		PageSize       int    `yaml:"page_size"`
-		MaxRetries     int    `yaml:"max_retries"`
-		QueryPath      string `yaml:"query_path"`
+		BaseURL            string `yaml:"base_url"`
+		ClientID           string `yaml:"client_id"`
+		ClientSecret       string `yaml:"client_secret"`
+		Username           string `yaml:"username"`
+		AccountID          string `yaml:"account_id"`
+		RequestTimeout     int    `yaml:"request_timeout"`
+		PageSize           int    `yaml:"page_size"`
+		MaxRetries         int    `yaml:"max_retries"`
+		QueryPath          string `yaml:"query_path"`
+		PersonnelQueryPath string `yaml:"personnel_query_path"`
 	} `yaml:"kingdee"`
 
 	Yunzhijia struct {
@@ -102,6 +103,9 @@ func Load(path string) (*Config, error) {
 	}
 	if c.Kingdee.QueryPath == "" {
 		c.Kingdee.QueryPath = "/v2/gcgs/fa/fa_asset_card/Select_AssetCard"
+	}
+	if c.Kingdee.PersonnelQueryPath == "" {
+		c.Kingdee.PersonnelQueryPath = "/v2/gcgs/base/bos_user/query-personnel"
 	}
 	if c.Sync.IntervalMinutes <= 0 {
 		c.Sync.IntervalMinutes = 60

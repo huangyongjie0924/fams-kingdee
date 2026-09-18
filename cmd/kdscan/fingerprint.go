@@ -29,7 +29,22 @@ type fieldFP struct {
 // 只记「字段在不在、有没有非零值」，**不记具体值**：
 // 具体值随业务数据天天变，写进指纹只会把 diff 淹没在噪声里。
 type fingerprint struct {
-	ScannedAt   string                        `json:"scanned_at"`
+	ScannedAt string `json:"scanned_at"`
+
+	// Filter 是接口**回显的服务端生效过滤条件**（响应里的 data.filter）。
+	//
+	// 为什么要记它：2026-09-18 星瀚给 query-personnel 加了一条默认过滤
+	// [(entryentity.orgstructure.number = '1202' OR ... '1201')]，
+	// 请求体里传什么都不生效，行数从 5038 直接变 0。
+	//
+	// 当时只看到「行数 5038 → 0」，第一反应会是「对方把投影清了」或者「数据被删了」，
+	// 而真相是配置里多了一条过滤。行数变化本身说不出原因，过滤条件才说得出来。
+	// 同理，资产卡接口也在这天被加上了
+	// [((org.number = '1202' OR org.number = '1201') AND billstatus = 'C')]，
+	// 它恰好和业务上的可见范围一致，所以没被察觉 —— 这种「恰好没坏事」的变更最危险，
+	// 因为它会让下一次变更失去参照。
+	Filter string `json:"filter"`
+
 	Rows        int                           `json:"rows"`
 	UniqueCodes int                           `json:"unique_codes"`
 	Fields      map[string]fieldFP            `json:"fields"`
@@ -114,13 +129,64 @@ func diffFields(old, cur map[string]fieldFP, verbose bool) (changes []string) {
 	return changes
 }
 
+// diffFilter 比对两次扫描里「服务端生效的过滤条件」。
+//
+// 这是本工具里唯一能看见「对方改了查询口径」的地方：过滤条件既不在请求体里
+// （传什么都无效），也不在返回数据里（0 行时连字段都没有），只在这条回显上。
+func diffFilter(old, cur string) (change string, important bool) {
+	if old == cur {
+		return "", false
+	}
+	switch {
+	case old == "":
+		return fmt.Sprintf("  + 过滤条件新增   %s\n      ← 接口开始带服务端过滤，行数可能骤降；"+
+			"请求体里的 filter 无法覆盖，需星瀚侧调整", cur), true
+	case cur == "":
+		return fmt.Sprintf("  - 过滤条件移除   %s\n      ← 查询口径放宽，行数会变多，落库量需重新评估", old), true
+	default:
+		return fmt.Sprintf("  ! 过滤条件变更\n      上次 %s\n      本次 %s", old, cur), true
+	}
+}
+
 // reportDiff 打印本次扫描与基线的差异，返回是否检测到「值得处理」的变化。
 //
-// 注意「值得处理」的口径：只有字段的增删和值域翻转算，
+// 注意「值得处理」的口径：只有字段的增删、值域翻转、以及过滤条件变更算，
 // 单纯的数量波动（新建了几张卡）不算 —— 否则每次扫描都在报警，很快就没人看了。
 func reportDiff(old, cur *fingerprint, verbose bool) (important bool) {
 	fmt.Printf("\n=== 与基线对比（基线 %s，%d 行 / %d 个编码）===\n",
 		old.ScannedAt, old.Rows, old.UniqueCodes)
+
+	// ---- 0 行必须单独走一条分支 ----
+	//
+	// 若照常 diff，会报出「48 个字段全部消失」——那是噪声，且方向完全错误：
+	// 它暗示"对方删了投影列"，而真实原因通常是"接口没返回数据"（过滤条件被改、
+	// 权限被收、单据被删）。把 0 行混进字段 diff 里，会把人送去查错的地方。
+	if cur.Rows == 0 {
+		fmt.Println("  ⚠ 本次返回 0 行 —— 字段清单无从采集，不能据此判断投影是否变化")
+		if cur.Filter != "" {
+			fmt.Printf("     服务端生效过滤: %s\n", cur.Filter)
+		} else {
+			fmt.Println("     响应里没有 filter 回显，无法判断是否被加了过滤条件")
+		}
+		fmt.Printf("     上次 %d 行 / %d 个编码；先查查询口径与授权，别翻字段清单\n",
+			old.Rows, old.UniqueCodes)
+		if change, imp := diffFilter(old.Filter, cur.Filter); change != "" {
+			fmt.Println(change)
+			important = imp
+		}
+		if important {
+			fmt.Println("\n  ⚠ 查询口径变了。这不是投影问题，是过滤条件问题。")
+		}
+		return important
+	}
+
+	// ---- 过滤条件先报 ----
+	// 放在字段 diff 之前：它是"为什么行数变了"的解释，应该先于现象出现。
+	if change, imp := diffFilter(old.Filter, cur.Filter); change != "" {
+		fmt.Println("过滤条件：")
+		fmt.Println(change)
+		important = imp
+	}
 
 	if old.Rows != cur.Rows || old.UniqueCodes != cur.UniqueCodes {
 		fmt.Printf("  总量: %d 行 → %d 行，%d 个编码 → %d 个编码\n",
@@ -161,8 +227,13 @@ func reportDiff(old, cur *fingerprint, verbose bool) (important bool) {
 	}
 
 	if len(blocks) == 0 {
-		fmt.Println("  无变化 —— 投影结构与上次一致")
-		return false
+		// 注意：这里不能直接 return false。过滤条件变了但字段没变时，
+		// important 已经是 true，直接返回会把唯一的信号吞掉。
+		if !important {
+			fmt.Println("  无变化 —— 投影结构与上次一致")
+			return false
+		}
+		return true
 	}
 	for i, b := range blocks {
 		if i > 0 {
@@ -171,7 +242,9 @@ func reportDiff(old, cur *fingerprint, verbose bool) (important bool) {
 		fmt.Println(b)
 	}
 
-	important = isImportant(blocks)
+	if isImportant(blocks) {
+		important = true
+	}
 	if important {
 		fmt.Println("\n  ⚠ 检测到投影或值域变化。字段取不到值时，先看这里，别翻旧结论。")
 	}

@@ -46,6 +46,9 @@ kingdee:
   page_size: 200                 # 上限 1000
   max_retries: 3
   query_path: "/v2/gcgs/fa/fa_asset_card/Select_AssetCard"
+  # 人员查询接口路径（注意：该接口当前被星瀚配置了一条服务端过滤条件，
+  # 请求体无法覆盖，返回 0 行。详见 docs/星瀚人员接口字段探测.md）
+  personnel_query_path: "/v2/gcgs/base/bos_user/query-personnel"
 
 yunzhijia:
   base_url: ""                   # 如 https://<your-yunzhijia-host>

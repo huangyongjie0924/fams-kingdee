@@ -132,7 +132,10 @@ func TestFingerprintRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, "fp.json")
 
 	want := &fingerprint{
-		ScannedAt:   "2026-09-17 23:32:00",
+		ScannedAt: "2026-09-17 23:32:00",
+		// 过滤条件必须一起落盘：它是唯一能看出「查询口径被改」的痕迹，
+		// 丢了它就等于下次扫描无从解释行数为什么变。
+		Filter:      "[((org.number = '1202' OR org.number = '1201') AND billstatus = 'C')]",
 		Rows:        227,
 		UniqueCodes: 200,
 		Fields: map[string]fieldFP{
@@ -155,6 +158,9 @@ func TestFingerprintRoundTrip(t *testing.T) {
 	}
 	if got.Rows != want.Rows || got.UniqueCodes != want.UniqueCodes || got.ScannedAt != want.ScannedAt {
 		t.Errorf("标量字段不一致: got %+v / want %+v", got, want)
+	}
+	if got.Filter != want.Filter {
+		t.Errorf("过滤条件没读回: got %q / want %q", got.Filter, want.Filter)
 	}
 	if len(got.Fields) != 1 || got.Fields["number"].NonZero != 227 {
 		t.Errorf("顶层字段没读回: %+v", got.Fields)

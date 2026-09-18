@@ -1,0 +1,167 @@
+{
+  "scanned_at": "2026-09-18 11:54:00",
+  "filter": "[null]",
+  "rows": 5038,
+  "unique_codes": 5036,
+  "fields": {
+    "birthday": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5
+    },
+    "createtime": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "disabledate": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 189
+    },
+    "email": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 67
+    },
+    "enable": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 4907
+    },
+    "entryentity": {
+      "kind": "array",
+      "present": 5038,
+      "nonzero": 4759
+    },
+    "fullpinyin": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "gcgs_employmenttype1_p_id": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 267
+    },
+    "gcgs_employmenttype1_p_name": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 267
+    },
+    "gcgs_employmenttype1_p_number": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 267
+    },
+    "gender": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 19
+    },
+    "id": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "idcard": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 1
+    },
+    "isforbidden": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 129
+    },
+    "modifytime": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "name": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5037
+    },
+    "ns_namestyle_id": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "ns_namestyle_name": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "ns_namestyle_number": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "ns_posttitle": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 0
+    },
+    "number": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5036
+    },
+    "phone": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 4902
+    },
+    "simplepinyin": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "status": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    },
+    "type": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 0
+    },
+    "type_title": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 0
+    },
+    "username": {
+      "kind": "scalar",
+      "present": 5038,
+      "nonzero": 5038
+    }
+  },
+  "nested": {
+    "entryentity": {
+      "id": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 10633
+      },
+      "isincharge": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 128
+      },
+      "position": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 10633
+      },
+      "seq": {
+        "kind": "scalar",
+        "present": 10633,
+        "nonzero": 10633
+      }
+    }
+  }
+}
