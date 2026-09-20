@@ -125,6 +125,14 @@ func (s *Server) handleCreateRepair(w http.ResponseWriter, r *http.Request) {
 	// 带出的派生字段 CategoryRepairable，不信前端传来的任何标记：前端隐藏按钮只是体验，
 	// 后端独立拦住才是底线（前端可被绕过）。COALESCE 保证悬空分类 / category_id=0 时为 false。
 	if !card.CategoryRepairable {
+		// 分类名为空是独立且更常见的坏数据情形（category_id=0 的哨兵值，或指向已删除分类的
+		// 悬空引用，LEFT JOIN 未匹配 → CategoryName 为空串）。此时若照常拼接会得到「」空引号，
+		// 员工看不出问题在哪、也不知道该找谁，所以单独给一句说明真正原因与下一步的文案。
+		if card.CategoryName == "" {
+			writeErr(w, http.StatusBadRequest,
+				"该资产未设置资产类别，不支持报修，请先联系资产管理员补全分类")
+			return
+		}
 		writeErr(w, http.StatusBadRequest,
 			fmt.Sprintf("「%s」类资产不支持报修，如需维修请联系资产管理员", card.CategoryName))
 		return
