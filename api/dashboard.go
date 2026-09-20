@@ -1,0 +1,154 @@
+package api
+
+import (
+	"net/http"
+
+	"asset-mgr/model"
+)
+
+// 首页各角色的「待我处理」映射（P0，见 docs/增量架构-可维修标签与首页.md §2.2）。
+//
+// 关键设计：哪些待办项出现、count 多少，**全部由服务端按角色算好**，前端只渲染。
+// 这样既不会把管理向待办泄露给员工端（后端不返回），也避免前端出现「角色→待办」的第二套规则。
+//
+// 可见范围一律复用 assetScope / repairScope（api/scope.go），不新写范围逻辑。
+// 两个不在 scope 内的数据源按 §2.5 处理：sync_run 用 Can(role, sync.manage) 门控，
+// count_item 用 assignee_id 窄化——都不新造 scope 抽象。
+
+// repairInProgressStatuses 是「处理中」的状态集合（供 viewer 的「我的报修处理中」用）。
+// 含 P1 的 approving / scrapping，启用后无需再改这里；P0 不产生这两个状态，故不影响当前计数。
+var repairInProgressStatuses = []string{
+	model.RepairAccepted, model.RepairApproving, model.RepairDispatched,
+	model.RepairRepairing, model.RepairScrapping,
+}
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	u := userFrom(r)
+
+	assetSc, ok := s.assetScope(w, r)
+	if !ok {
+		return
+	}
+	repairSc, ok := s.repairScope(w, r)
+	if !ok {
+		return
+	}
+
+	overview, err := s.dashboardOverview(assetSc, repairSc)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "查询首页概览失败："+err.Error())
+		return
+	}
+	todos, err := s.dashboardTodos(u, repairSc)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "查询待办失败："+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, model.Dashboard{Todo: todos, Overview: overview})
+}
+
+// dashboardOverview 组装概览区块。聚合全部下沉到 DB（GROUP BY），按 scope 在 WHERE 收窄。
+func (s *Server) dashboardOverview(assetSc model.AssetScope, repairSc model.RepairScope) (model.DashboardOverview, error) {
+	var ov model.DashboardOverview
+
+	total, err := s.st.AssetTotal(assetSc)
+	if err != nil {
+		return ov, err
+	}
+	statusCounts, err := s.st.AssetStatusCounts(assetSc)
+	if err != nil {
+		return ov, err
+	}
+	byCategory, err := s.st.AssetCategoryCounts(assetSc)
+	if err != nil {
+		return ov, err
+	}
+	repairCounts, err := s.st.RepairStatusCounts(repairSc)
+	if err != nil {
+		return ov, err
+	}
+
+	ov.AssetTotal = total
+	ov.AssetStatus = statusCounts
+	ov.AssetByCategory = byCategory
+	ov.RepairStatus = repairCounts
+	return ov, nil
+}
+
+// dashboardTodos 按角色算「待我处理」。
+//
+// 只保留 count > 0 的项：待办即「有待处理的事」，为 0 的项不是待办，不返回；
+// 前端在 todo 为空时展示空态即可。这一取舍由后端决定，前端不做二次过滤。
+func (s *Server) dashboardTodos(u model.User, repairSc model.RepairScope) ([]model.DashboardTodo, error) {
+	todos := []model.DashboardTodo{}
+	add := func(key, label string, count int64, link string) {
+		if count > 0 {
+			todos = append(todos, model.DashboardTodo{Key: key, Label: label, Count: count, Link: link})
+		}
+	}
+	// addRepair 统计可见范围内命中给定状态的维修单数，命中则入列。
+	addRepair := func(key, label, link string, statuses ...string) error {
+		n, err := s.st.CountRepairsByStatuses(statuses, repairSc)
+		if err != nil {
+			return err
+		}
+		add(key, label, n, link)
+		return nil
+	}
+
+	switch u.Role {
+	case model.RoleAdmin, model.RoleAssetManager:
+		// 受理 / 派工 / 确认：admin 与 asset_manager 的可见范围都不限，count 为全局。
+		if err := addRepair("pending", "待受理", "/repairs?status=pending", model.RepairPending); err != nil {
+			return nil, err
+		}
+		if err := addRepair("unassigned", "待派工", "/repairs?status=accepted", model.RepairAccepted); err != nil {
+			return nil, err
+		}
+		if err := addRepair("confirming", "待确认", "/repairs?status=confirming", model.RepairConfirming); err != nil {
+			return nil, err
+		}
+	case model.RoleRepairTech:
+		// 维修工：repairScope 已收窄到 assignee_emp_id=me，故这里只需按状态数。
+		if err := addRepair("to_take", "派给我的待接单", "/repairs?status=dispatched", model.RepairDispatched); err != nil {
+			return nil, err
+		}
+		if err := addRepair("repairing", "我名下维修中", "/repairs?status=repairing", model.RepairRepairing); err != nil {
+			return nil, err
+		}
+	case model.RoleDeptHead:
+		// 部门主管：repairScope 已收窄到本部门（含下级），故 pending 即「本部门待受理」。
+		if err := addRepair("pending", "本部门待受理", "/repairs?status=pending", model.RepairPending); err != nil {
+			return nil, err
+		}
+	case model.RoleCounter:
+		// 我的待盘点：count_item 专用窄化（不在 asset/repair scope 内）。
+		n, err := s.st.PendingCountItems(u.EmployeeID)
+		if err != nil {
+			return nil, err
+		}
+		add("count_pending", "我的待盘点", n, "/count/mine")
+		// 我的报修待确认：repairScope 对 counter 收窄到 reporter_emp_id=me。
+		if err := addRepair("confirming", "我的报修待确认", "/repairs?status=confirming", model.RepairConfirming); err != nil {
+			return nil, err
+		}
+	case model.RoleViewer:
+		if err := addRepair("confirming", "我的报修待确认", "/repairs?status=confirming", model.RepairConfirming); err != nil {
+			return nil, err
+		}
+		if err := addRepair("in_progress", "我的报修处理中", "/repairs", repairInProgressStatuses...); err != nil {
+			return nil, err
+		}
+	}
+
+	// 同步异常：仅持有 sync.manage 的角色（当前只有 admin）——服务端判定，不靠前端 v-if。
+	if model.Can(u.Role, model.PermSyncManage) {
+		n, err := s.st.SyncFailureCount()
+		if err != nil {
+			return nil, err
+		}
+		add("sync_failed", "同步异常", n, "/sync")
+	}
+
+	return todos, nil
+}

@@ -609,3 +609,44 @@ type CountReport struct {
 	Summary CountSummary `json:"summary"`
 	Items   []CountItem  `json:"items"`
 }
+
+// —— 首页（需求 B）DTO ——
+//
+// DashboardTodo 是「待我处理」的一项。哪些项出现、count 多少全部由服务端按角色算好，
+// 前端只渲染（避免把「角色→待办」的判断复制到前端形成第二套规则）。
+type DashboardTodo struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Count int64  `json:"count"`
+	Link  string `json:"link"`
+}
+
+// DashboardStatusCount 是「状态 + 数量」的通用分组计数（资产状态分布 / 维修单状态分布共用）。
+// 资产状态分布里 Status 直接是中文有效状态（display_status），Label 留空；
+// 维修单状态分布里 Status 是英文状态码、Label 是中文白话（见 store/dashboard.go）。
+type DashboardStatusCount struct {
+	Status string `json:"status"`
+	Label  string `json:"label,omitempty"`
+	Count  int64  `json:"count"`
+}
+
+// DashboardCategoryCount 是「分类名 + 数量」。
+type DashboardCategoryCount struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
+// DashboardOverview 是首页概览区块。字段分组即未来的扩展点：P1 的分布/趋势直接往这里加键，
+// 前端增量渲染，结构不返工。
+type DashboardOverview struct {
+	AssetTotal      int64                    `json:"asset_total"`
+	AssetStatus     []DashboardStatusCount   `json:"asset_status"`
+	AssetByCategory []DashboardCategoryCount `json:"asset_by_category"`
+	RepairStatus    []DashboardStatusCount   `json:"repair_status"`
+}
+
+// Dashboard 是 GET /api/dashboard 的响应体：一次请求返回「待办 + 概览」两块。
+type Dashboard struct {
+	Todo     []DashboardTodo   `json:"todo"`
+	Overview DashboardOverview `json:"overview"`
+}

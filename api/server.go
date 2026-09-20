@@ -47,6 +47,9 @@ func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sso/login", s.handleSSOLogin)
 	mux.HandleFunc("GET /api/me", s.handleMe)
 
+	// 首页聚合（需求 B）：读接口不门控，可见范围在数据行上收窄（与列表同一套 scope）。
+	mux.HandleFunc("GET /api/dashboard", s.handleDashboard)
+
 	mux.HandleFunc("GET /api/assets", s.handleListCards)
 	mux.HandleFunc("POST /api/assets", s.requirePerm(model.PermAssetManage, s.handleCreateCard))
 	mux.HandleFunc("POST /api/assets/status", s.requirePerm(model.PermAssetManage, s.handleBatchStatus))

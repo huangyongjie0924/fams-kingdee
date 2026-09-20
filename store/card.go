@@ -49,12 +49,15 @@ var sortColumns = map[string]string{
 	"updated_at":    "c.updated_at",
 }
 
-func buildWhere(q model.ListQuery, sc model.AssetScope) (string, []any) {
-	conds := []string{"c.deleted_at IS NULL"}
-	args := []any{}
-
-	// 可见范围必须进 WHERE 而不是取回来再滤：分页、COUNT、SUM 都拼这条 where，
-	// 后滤会让总数和金额合计都对不上。零值 scope 一行都不加，admin 的 SQL 与从前逐字节一致。
+// scopeConds 把资产可见范围翻译成 WHERE 条件片段（含软删约定 `c.deleted_at IS NULL`）。
+//
+// ⚠️ 产出的条件带 `c.` 表别名前缀，调用方 SQL **必须**写 `FROM asset_card c`；
+// 首页聚合（store/dashboard.go）与资产列表共用本函数，正是为了杜绝
+// 「列表的 scope 与首页的 scope 各写一份、随时间分叉」。
+// 零值 scope 只返回软删条件，admin 的 SQL 与从前逐字节一致。
+func scopeConds(sc model.AssetScope) (conds []string, args []any) {
+	conds = []string{"c.deleted_at IS NULL"}
+	args = []any{}
 	if sc.SelfEmpID > 0 {
 		conds = append(conds, "c.user_emp_id = ?")
 		args = append(args, sc.SelfEmpID)
@@ -65,6 +68,13 @@ func buildWhere(q model.ListQuery, sc model.AssetScope) (string, []any) {
 			args = append(args, id)
 		}
 	}
+	return conds, args
+}
+
+func buildWhere(q model.ListQuery, sc model.AssetScope) (string, []any) {
+	// 可见范围必须进 WHERE 而不是取回来再滤：分页、COUNT、SUM 都拼这条 where，
+	// 后滤会让总数和金额合计都对不上。
+	conds, args := scopeConds(sc)
 
 	if q.Keyword != "" {
 		kw := "%" + q.Keyword + "%"
