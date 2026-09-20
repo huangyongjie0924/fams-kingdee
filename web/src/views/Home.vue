@@ -1,6 +1,25 @@
 <template>
   <div class="page home">
-    <!-- 1. 「待我处理」：首屏最显眼位置，本页核心。待办项全部由服务端按角色算好，前端只渲染。 -->
+    <!-- 1. 问候条：先告诉用户「这是谁的工作台」，再往下才是具体的事。 -->
+    <div class="greet">
+      <div class="greet-main">
+        <span class="greet-hi">{{ greeting }}，{{ displayName }}</span>
+        <el-tag v-if="roleLabel" size="small" type="info">{{ roleLabel }}</el-tag>
+        <span class="greet-date">{{ todayText }}</span>
+      </div>
+      <!-- 报修是首页唯一的主操作；repair_tech 没有 repair.report，强行展示会点出 403 -->
+      <el-button
+        v-if="auth.can('repair.report')"
+        class="greet-act"
+        type="primary"
+        :icon="EditPen"
+        @click="go('/repairs/new')"
+      >
+        报修
+      </el-button>
+    </div>
+
+    <!-- 2. 「待我处理」：首屏最显眼位置，本页核心。待办项全部由服务端按角色算好，前端只渲染。 -->
     <el-card class="block" v-loading="loading">
       <template #header>
         <div class="block-hd">
@@ -16,97 +35,83 @@
         show-icon
         title="首页数据加载失败，请稍后重试"
       />
-      <div v-else-if="todo.length" class="todo-grid">
+      <div v-else-if="todo.length" class="todo-list">
         <div
           v-for="t in todo"
           :key="t.key"
-          class="todo-item"
+          class="todo-row"
           :class="{ 'is-zero': t.count <= 0 }"
+          :style="rowStyle(t)"
           role="button"
           tabindex="0"
           @click="goTodo(t)"
           @keyup.enter="goTodo(t)"
         >
+          <span class="todo-bar" />
           <span class="todo-count">{{ t.count }}</span>
           <span class="todo-label">{{ t.label }}</span>
+          <el-icon class="todo-arrow"><ArrowRight /></el-icon>
         </div>
       </div>
       <el-empty v-else :image-size="72" description="当前没有待你处理的事项" />
     </el-card>
 
-    <!-- 2. 资产概况：总数 + 按状态分布（CSS 比例条，不引图表库）。资产列表对所有角色可见，故不设权限门。 -->
-    <el-card class="block" v-loading="loading">
+    <!-- 3. 指标卡：服务端按角色下发的「与你相关的量」。后端 stats 字段未上线时整块不渲染。 -->
+    <el-card v-if="stats.length" class="block" v-loading="loading">
       <template #header>
-        <span class="block-title">资产概况</span>
+        <span class="block-title">概览</span>
       </template>
 
-      <div class="stat-row">
-        <el-statistic title="资产总数" :value="assetTotal" />
-      </div>
-
-      <div v-if="assetStatus.length" class="bar-list">
-        <div v-for="s in assetStatus" :key="s.status" class="bar-item">
-          <div class="bar-hd">
-            <span class="bar-label">{{ s.status }}</span>
-            <span class="bar-count">{{ s.count }}</span>
-          </div>
-          <div class="bar-track">
-            <div class="bar-fill" :style="{ width: pct(s.count, assetStatus) + '%' }" />
-          </div>
+      <div class="stat-grid">
+        <div
+          v-for="s in stats"
+          :key="s.key"
+          class="stat-item"
+          role="button"
+          tabindex="0"
+          @click="go(s.link)"
+          @keyup.enter="go(s.link)"
+        >
+          <div class="stat-count">{{ s.count }}</div>
+          <div class="stat-label">{{ s.label }}</div>
         </div>
       </div>
-      <el-empty v-else :image-size="60" description="暂无可统计的资产" />
-
-      <template v-if="assetByCategory.length">
-        <el-divider content-position="left">按类别</el-divider>
-        <div class="bar-list">
-          <div v-for="c in assetByCategory" :key="c.name" class="bar-item">
-            <div class="bar-hd">
-              <span class="bar-label">{{ c.name }}</span>
-              <span class="bar-count">{{ c.count }}</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill" :style="{ width: pct(c.count, assetByCategory) + '%' }" />
-            </div>
-          </div>
-        </div>
-      </template>
     </el-card>
 
-    <!-- 3. 维修流程概况：各状态计数 + CSS 条。区块显隐沿用 SideMenu 的 auth.can 风格。 -->
-    <el-card v-if="canSeeRepair" class="block" v-loading="loading">
+    <!-- 4. 快速动作：4 格入口，按权限出现。路由 path 逐条对着 router/index.ts 核过，不留死链。 -->
+    <el-card class="block">
       <template #header>
-        <span class="block-title">维修流程概况</span>
+        <span class="block-title">快捷入口</span>
       </template>
 
-      <div v-if="repairStatus.length" class="bar-list">
-        <div v-for="r in repairStatus" :key="r.status" class="bar-item">
-          <div class="bar-hd">
-            <span class="bar-label">{{ r.label || repairStatusLabel(r.status) }}</span>
-            <span class="bar-count">{{ r.count }}</span>
-          </div>
-          <div class="bar-track">
-            <div class="bar-fill is-repair" :style="{ width: pct(r.count, repairStatus) + '%' }" />
-          </div>
+      <div class="quick-grid">
+        <div
+          v-for="a in quickActions"
+          :key="a.key"
+          class="quick-item"
+          role="button"
+          tabindex="0"
+          @click="go(a.path)"
+          @keyup.enter="go(a.path)"
+        >
+          <el-icon class="quick-icon"><component :is="a.icon" /></el-icon>
+          <span class="quick-label">{{ a.label }}</span>
         </div>
       </div>
-      <el-empty v-else :image-size="60" description="暂无维修单" />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, type Component } from "vue";
 import { useRouter } from "vue-router";
-import { Refresh } from "@element-plus/icons-vue";
+import { ArrowRight, EditPen, Refresh, Tickets, Tools } from "@element-plus/icons-vue";
 import {
   getDashboard,
   type Dashboard,
-  type DashboardCategoryCount,
-  type DashboardStatusCount,
+  type DashboardStatCard,
   type DashboardTodo,
 } from "../api/dashboard";
-import { repairStatusLabel } from "../api/meta";
 import { auth } from "../stores/auth";
 
 const router = useRouter();
@@ -118,6 +123,7 @@ const loadError = ref(false);
 function emptyDashboard(): Dashboard {
   return {
     todo: [],
+    stats: [],
     overview: { asset_total: 0, asset_status: [], asset_by_category: [], repair_status: [] },
   };
 }
@@ -125,17 +131,59 @@ function emptyDashboard(): Dashboard {
 const data = ref<Dashboard>(emptyDashboard());
 
 const todo = computed<DashboardTodo[]>(() => data.value.todo ?? []);
-const assetTotal = computed(() => data.value.overview?.asset_total ?? 0);
-const assetStatus = computed<DashboardStatusCount[]>(() => data.value.overview?.asset_status ?? []);
-const assetByCategory = computed<DashboardCategoryCount[]>(
-  () => data.value.overview?.asset_by_category ?? [],
-);
-const repairStatus = computed<DashboardStatusCount[]>(
-  () => data.value.overview?.repair_status ?? [],
-);
+// stats 由后端并行开发中、此刻还没上线，必须防御：取不到就是空数组，整块不渲染。
+const stats = computed<DashboardStatCard[]>(() => data.value.stats ?? []);
 
-// 流程概况区块的显隐，沿用 SideMenu.vue 的 auth.can 风格。
-// 注意：只在这里做「区块级」判断；**待办项本身不按角色过滤**——哪些待办出现由服务端决定。
+// —— 问候条 ——
+const WEEK_DAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+const greeting = computed(() => {
+  const h = new Date().getHours();
+  if (h < 12) return "早上好";
+  if (h < 18) return "下午好";
+  return "晚上好";
+});
+
+const displayName = computed(() => auth.user?.real_name || auth.user?.username || "同事");
+
+const roleLabel = computed(() => auth.roleLabel || "");
+
+const todayText = computed(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${WEEK_DAYS[d.getDay()]}`;
+});
+
+// —— 待办配色：紧急度由服务端给，前端只做「档位 → 颜色」这一层映射 ——
+const LEVEL_COLOR: Record<string, string> = {
+  danger: "#f56c6c",
+  warning: "#e6a23c",
+  info: "#409eff",
+};
+
+function levelOf(t: DashboardTodo): string {
+  const lv = (t.level || "").toLowerCase();
+  return lv === "danger" || lv === "warning" ? lv : "info";
+}
+
+// 0 的项仍然显示（让用户知道「这类事现在是 0」），但灰掉，不再抢紧急度的色。
+function rowStyle(t: DashboardTodo): Record<string, string> {
+  return { "--lv": t.count > 0 ? LEVEL_COLOR[levelOf(t)] : "#c0c4cc" };
+}
+
+// —— 快速动作 ——
+interface QuickAction {
+  key: string;
+  label: string;
+  path: string;
+  icon: Component;
+}
+
+// 流程入口的显隐，沿用 SideMenu.vue 的 auth.can 风格。
+// 注意：只在这里做「区块/入口级」判断；待办项与指标卡本身不按角色过滤——给什么由服务端决定。
 const canSeeRepair = computed(
   () =>
     auth.can("repair.report") ||
@@ -145,15 +193,40 @@ const canSeeRepair = computed(
     auth.can("repair.manage"),
 );
 
-// 比例条宽度：以当前分组内的最大值为 100%，纯 CSS，不引入图表库。
-function pct(count: number, list: { count: number }[]): number {
-  const max = Math.max(1, ...list.map((i) => i.count));
-  return Math.max(0, Math.min(100, Math.round((count / max) * 100)));
-}
+// 维修单入口落在哪张列表，按权限选「看得见且有内容」的那张，与侧边菜单保持一致。
+const repairEntry = computed<{ label: string; path: string }>(() => {
+  if (auth.can("repair.dispatch") || auth.can("repair.manage")) {
+    return { label: "维修管理", path: "/repairs" };
+  }
+  if (auth.can("repair.handle")) {
+    return { label: "我的维修", path: "/repairs?mine=1" };
+  }
+  return { label: "我的报修", path: "/repairs/mine" };
+});
+
+const quickActions = computed<QuickAction[]>(() => {
+  const list: QuickAction[] = [];
+  if (auth.can("repair.report")) {
+    list.push({ key: "report", label: "我要报修", path: "/repairs/new", icon: EditPen });
+  }
+  // 资产列表对所有角色可见，与侧边菜单一致，不加权限门。
+  list.push({ key: "assets", label: "资产列表", path: "/assets", icon: Tickets });
+  if (canSeeRepair.value) {
+    list.push({ key: "repairs", label: repairEntry.value.label, path: repairEntry.value.path, icon: Tools });
+  }
+  if (auth.can("sync.manage")) {
+    list.push({ key: "sync", label: "金蝶同步", path: "/sync", icon: Refresh });
+  }
+  return list;
+});
 
 // 待办项跳转：link 形如 "/repairs?status=pending"，由服务端拼好，前端直接 push。
 function goTodo(t: DashboardTodo) {
   if (t.link) router.push(t.link);
+}
+
+function go(link: string) {
+  if (link) router.push(link);
 }
 
 async function load() {
@@ -174,6 +247,12 @@ onMounted(load);
 </script>
 
 <style scoped>
+/* 限宽只加在首页自己身上：别的页面（列表、表单）需要吃满宽度，不能动全局 .page */
+.page.home {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
 .home {
   display: flex;
   flex-direction: column;
@@ -196,112 +275,215 @@ onMounted(load);
   font-weight: 600;
 }
 
-/* —— 待我处理 —— */
-.todo-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
-}
-
-.todo-item {
+/* —— 1. 问候条 —— */
+.greet {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 14px 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #fff;
   border: 1px solid #ebeef5;
   border-radius: 8px;
-  background: #f5f7fa;
-  cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.1s;
 }
 
-.todo-item:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 10px rgba(64, 158, 255, 0.15);
+.greet-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
-.todo-item:active {
-  transform: translateY(1px);
+.greet-hi {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
 }
 
-.todo-item:focus-visible {
-  outline: 2px solid #409eff;
-  outline-offset: 1px;
-}
-
-.todo-count {
-  font-size: 30px;
-  font-weight: 700;
-  line-height: 1.1;
-  color: #409eff;
-}
-
-.todo-label {
+.greet-date {
   font-size: 13px;
   color: #606266;
 }
 
-/* count 为 0 的项仍然显示（让用户知道「这类事现在是 0」），但视觉上弱化。 */
-.todo-item.is-zero {
-  background: #fafafa;
-  opacity: 0.6;
-}
-
-.todo-item.is-zero .todo-count {
-  color: #c0c4cc;
-}
-
-/* —— 概览比例条 —— */
-.stat-row {
-  margin-bottom: 12px;
-}
-
-.bar-list {
+/* —— 2. 待我处理：横向列表，一屏看得完 —— */
+.todo-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.bar-hd {
+.todo-row {
+  position: relative;
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 4px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px 12px 20px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.1s;
+}
+
+.todo-row:hover {
+  border-color: var(--lv);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.todo-row:active {
+  transform: translateY(1px);
+}
+
+.todo-row:focus-visible {
+  outline: 2px solid var(--lv);
+  outline-offset: 1px;
+}
+
+/* 左侧竖条与数字同色：颜色只表达紧急度档位，由 --lv 一处控制 */
+.todo-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--lv);
+  border-radius: 8px 0 0 8px;
+}
+
+.todo-count {
+  flex: 0 0 56px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--lv);
+}
+
+.todo-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: #303133;
+}
+
+.todo-arrow {
+  flex: 0 0 auto;
+  color: #c0c4cc;
+}
+
+/* count 为 0：--lv 已在 rowStyle 里降成灰，这里只把底色压暗 */
+.todo-row.is-zero {
+  background: #fafafa;
+}
+
+/* —— 3. 指标卡 —— */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stat-item {
+  padding: 14px 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #f5f7fa;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.stat-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 10px rgba(64, 158, 255, 0.12);
+}
+
+.stat-item:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 1px;
+}
+
+.stat-count {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #303133;
+}
+
+.stat-label {
+  margin-top: 2px;
   font-size: 13px;
   color: #606266;
 }
 
-.bar-count {
-  font-weight: 600;
-  color: #303133;
+/* —— 4. 快速动作 —— */
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.bar-track {
-  height: 8px;
-  background: #ebeef5;
-  border-radius: 4px;
-  overflow: hidden;
+.quick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 8px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.1s;
 }
 
-.bar-fill {
-  height: 100%;
-  background: #409eff;
-  border-radius: 4px;
-  transition: width 0.3s;
+.quick-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 10px rgba(64, 158, 255, 0.12);
 }
 
-.bar-fill.is-repair {
-  background: #e6a23c;
+.quick-item:active {
+  transform: translateY(1px);
+}
+
+.quick-item:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 1px;
+}
+
+.quick-icon {
+  font-size: 22px;
+  color: #409eff;
+}
+
+.quick-label {
+  font-size: 13px;
+  color: #606266;
+}
+
+.quick-item:hover .quick-label {
+  color: #409eff;
 }
 
 @media (max-width: 767px), (max-height: 520px) {
-  .todo-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
+  .greet {
+    flex-wrap: wrap;
+  }
+
+  /* 窄屏问候条换行后，主操作按钮独占一行更好点 */
+  .greet-act {
+    width: 100%;
+    margin-left: 0;
   }
 
   .todo-count {
-    font-size: 26px;
+    flex-basis: 44px;
+    font-size: 22px;
+  }
+
+  .stat-grid,
+  .quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 }
 </style>
