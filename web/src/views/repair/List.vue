@@ -128,8 +128,20 @@ const loading = ref(false);
 const departments = ref<any[]>([]);
 const dateRange = ref<string[]>([]);
 
+// 从 URL 查询参数初始化筛选：首页「待我处理」的 link 形如 /repairs?status=pending，
+// 需要「只看我的」时附 &mine=1。status 是逗号分隔的状态码串（如 "accepted,assigned"），
+// 转成 string[] 赋给 query.status；load() 里再 join(",") 回传给后端。mine 由 route.query.mine 响应式处理。
+function parseStatusQuery(): string[] {
+  const raw = route.query.status;
+  const s = Array.isArray(raw) ? raw.join(",") : raw;
+  return String(s ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
 const query = ref<Record<string, any>>({
-  status: [] as string[],
+  status: parseStatusQuery(),
   use_dept_id: 0,
   asset_code: "",
 });

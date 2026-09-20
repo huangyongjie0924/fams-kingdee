@@ -44,7 +44,7 @@ async function submit() {
   try {
     const { data } = await http.post("/login", form.value);
     auth.login(data.token, data.user);
-    router.push({ name: "assets" });
+    router.push({ name: "home" });
   } finally {
     loading.value = false;
   }

@@ -7,7 +7,7 @@ const routes = [
     path: "/",
     component: () => import("../layouts/Main.vue"),
     children: [
-      { path: "", redirect: "/assets" },
+      { path: "", name: "home", component: () => import("../views/Home.vue") },
       { path: "assets", name: "assets", component: () => import("../views/asset/List.vue") },
       { path: "assets/new", name: "asset-new", component: () => import("../views/asset/CardForm.vue") },
       { path: "assets/labels", name: "asset-labels", component: () => import("../views/asset/Labels.vue") },
@@ -35,7 +35,7 @@ const router = createRouter({ history: createWebHashHistory(), routes });
 
 router.beforeEach((to) => {
   if (to.name === "login" && auth.token) {
-    return { name: "assets" };
+    return { name: "home" };
   }
   if (to.name !== "login" && !auth.token) {
     return { name: "login" };

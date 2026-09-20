@@ -1,5 +1,9 @@
 <template>
   <el-menu :default-active="active" router class="menu" @select="emit('select')">
+    <!-- 首页对所有角色可见，不加 v-if；path 为 "/"，与 active(route.path) 天然高亮 -->
+    <el-menu-item index="/">
+      <el-icon><HomeFilled /></el-icon><span>首页</span>
+    </el-menu-item>
     <el-menu-item index="/assets">
       <el-icon><Tickets /></el-icon><span>资产列表</span>
     </el-menu-item>
@@ -47,6 +51,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
+import { HomeFilled } from "@element-plus/icons-vue";
 import { auth } from "../stores/auth";
 import { useIsMobile } from "../composables/useIsMobile";
 
