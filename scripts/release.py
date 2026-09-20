@@ -126,15 +126,53 @@ def preflight(version, dry_run):
     return head, tag_ready
 
 
+def dist_assets():
+    """列出 web/dist 下所有带内容哈希的产物文件名（assets/*.js、assets/*.css）。"""
+    d = os.path.join(ROOT, "web", "dist", "assets")
+    if not os.path.isdir(d):
+        sys.exit("web/dist/assets 不存在 —— 前端没构建成功")
+    names = sorted(f for f in os.listdir(d) if f.endswith((".js", ".css")))
+    if not names:
+        sys.exit("web/dist/assets 是空的 —— 前端没构建成功")
+    return names
+
+
+def verify_embed(names):
+    """确认二进制里内嵌的前端产物就是刚构建出来的那一批。
+
+    这道检查防的是「构建失败但产物照出」：前端构建如果失败、而磁盘上还留着
+    上一次的 dist，go build 会拿旧 dist 编出一个「有产物、能启动、大小正常」的
+    二进制，看起来完全没问题。只靠 check=True 拦不住这种情况。
+
+    go:embed all:web/dist 会把 dist 下每个文件的路径都写进二进制，
+    所以「文件名出现在二进制里」是可靠判据。
+    """
+    with open(LOCAL_BINARY, "rb") as f:
+        blob = f.read()
+    missing = [n for n in names if f"assets/{n}".encode() not in blob]
+    if missing:
+        sys.exit(
+            "二进制里找不到下列前端产物，说明它内嵌的不是刚构建的那批（很可能是旧 dist）：\n  "
+            + "\n  ".join(missing[:10])
+            + "\n请删掉 web/dist 后重新构建。"
+        )
+    return len(names)
+
+
 def build():
     print("\n[1/4] 构建前端（vite build）…")
     out = sh("npm run build", cwd=os.path.join(ROOT, "web"))
-    print("  " + out.splitlines()[-1] if out else "  ok")
+    print("  " + (out.splitlines()[-1] if out else "ok"))
+    names = dist_assets()
 
     print("[2/4] 交叉编译 linux/amd64…")
     sh("GOOS=linux GOARCH=amd64 go build -o deploy/asset-mgr .")
     if not os.path.exists(LOCAL_BINARY):
         sys.exit("编译未产出 deploy/asset-mgr")
+
+    n = verify_embed(names)
+    print(f"  已确认二进制内嵌本次构建的 {n} 个前端产物 ✓")
+
     digest = sha256(LOCAL_BINARY)
     size = os.path.getsize(LOCAL_BINARY)
     print(f"  {BINARY_NAME}  {size:,} 字节  sha256={digest}")
