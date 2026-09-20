@@ -53,6 +53,10 @@ func roleBindingErr(role string, employeeID, deptID int64) string {
 		if employeeID == 0 {
 			return "盘点员必须绑定员工，否则无法被指派资产"
 		}
+	case model.RoleRepairTech:
+		if employeeID == 0 {
+			return "维修工必须绑定员工，否则无法被指派维修单"
+		}
 	}
 	return ""
 }

@@ -50,6 +50,58 @@ export const STATUS_TAG: Record<string, string> = {
   报废: "danger",
 };
 
+// 「维修中 / 调拨中」不由用户手选：它们由单据流程（维修单 / 调拨单）驱动写入本地列 biz_status，
+// 手填进 status 会在次日 00:00 被星瀚同步抹掉。后端枚举（model.AssetStatuses）保留这两个值
+// （同步与单据仍需写入），仅在「让用户手选」的下拉里过滤掉。见 docs/维修流程模块架构建议.md §7 T3。
+export const MANUAL_EXCLUDED_STATUSES = ["维修中", "调拨中"];
+
+export function selectableStatuses(all: string[]): string[] {
+  return (all || []).filter((s) => !MANUAL_EXCLUDED_STATUSES.includes(s));
+}
+
+// —— 维修单：后端存英文码，前端展示中文白话 ——
+export const REPAIR_STATUS_LABELS: Record<string, string> = {
+  pending: "待受理",
+  accepted: "已受理",
+  approving: "待审批",
+  dispatched: "已派工",
+  repairing: "维修中",
+  confirming: "待确认",
+  done: "已完工",
+  rejected: "已驳回",
+  cancelled: "已撤单",
+  scrapping: "报废评估",
+};
+
+export const REPAIR_STATUS_TAG: Record<string, string> = {
+  pending: "warning",
+  accepted: "primary",
+  approving: "warning",
+  dispatched: "primary",
+  repairing: "warning",
+  confirming: "warning",
+  done: "success",
+  rejected: "danger",
+  cancelled: "info",
+  scrapping: "danger",
+};
+
+export const REPAIR_URGENCIES = ["low", "normal", "high"] as const;
+
+export const REPAIR_URGENCY_LABELS: Record<string, string> = {
+  low: "低",
+  normal: "一般",
+  high: "紧急",
+};
+
+export function repairStatusLabel(code: string): string {
+  return REPAIR_STATUS_LABELS[code] || code;
+}
+
+export function repairStatusTag(code: string): string {
+  return REPAIR_STATUS_TAG[code] || "info";
+}
+
 export function money(v: number | string | null | undefined): string {
   const n = Number(v || 0);
   return n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -67,6 +119,7 @@ export function qty(v: number | string | null | undefined): string {
 // quantity 在内：手工新建的卡要能自己填数量。金蝶同步来的卡由前端置灰（见
 // CardForm 的 form.synced），且后端同步按「星瀚 >0 才覆盖」处理，改了也会被纠正回来。
 // synced 是派生字段，故意不在白名单里。
+// biz_status 也不在内：它只有一个写入者——维修单据状态机，用户永远不能手填「维修中」。
 export const CARD_SUBMIT_FIELDS = [
   "asset_code", "name", "category_id", "spec", "serial_no", "unit", "status", "amount",
   "quantity",

@@ -1,0 +1,84 @@
+%% FAMS 维修流程模块 · 关键时序图
+%% 来源：docs/维修流程模块架构建议.md §6.1
+
+%% ── S1 员工扫码报修 ──
+sequenceDiagram
+    participant U as 员工(手机)
+    participant Scan as Scan.vue
+    participant List as List.vue
+    participant CD as CardDetail.vue
+    participant New as repair/New.vue
+    participant API as api/repair.go
+    participant ST as store/repair.go
+    participant DB as MySQL
+
+    U->>Scan: 扫资产标签
+    Scan->>Scan: extractAssetCode(payload)
+    Scan->>List: router.replace(/assets?asset_code=X)
+    List->>API: GET /assets/by-code?code=X
+    API-->>List: AssetCard(只读)
+    List->>CD: 打开资产详情抽屉
+    U->>CD: 点「报修」
+    CD->>New: push /repairs/new?asset_code=X
+    New->>API: GET /assets/by-code?code=X (回填资产信息)
+    U->>New: 填问题描述 + 拍照(先传) + 紧急程度
+    New->>API: POST /api/repair-upload (repair_id=0)
+    New->>API: POST /api/repairs {card_id, fault_desc, urgency, attachment_ids}
+    API->>ST: CreateRepair(...)
+    ST->>DB: BEGIN
+    ST->>DB: INSERT repair_order (status=pending)
+    ST->>DB: UPDATE repair_order SET code=WX<date><id>
+    ST->>DB: INSERT doc_status_log (''->pending, submit)
+    ST->>DB: BindRepairAttachments(repair_id, ids)
+    ST->>DB: COMMIT
+    ST-->>API: {id, code, status}
+    API-->>New: 单号 WX202609200001 / 待受理
+
+%% ── S2 受理 → 派工 → 接单 → 完工（含 biz_status 写入） ──
+sequenceDiagram
+    participant M as 管理员
+    participant T as 维修工
+    participant API as api/repair.go
+    participant ST as store/repair.go
+    participant DB as MySQL
+
+    M->>API: POST /repairs/{id}/accept
+    API->>ST: Transition(accept)
+    ST->>DB: UPDATE status=pending->accepted; INSERT doc_status_log
+
+    M->>API: POST /repairs/{id}/dispatch {assignee_emp_id | vendor_id}
+    API->>ST: Transition(dispatch)
+    ST->>DB: UPDATE status=accepted->dispatched; INSERT doc_status_log
+
+    T->>API: POST /repairs/{id}/take
+    API->>ST: Transition(take)
+    ST->>DB: BEGIN
+    ST->>DB: UPDATE status=dispatched->repairing
+    ST->>DB: UPDATE asset_card SET biz_status='维修中' WHERE id=card_id
+    ST->>DB: INSERT asset_history(action='repair', 状态 old->维修中)
+    ST->>DB: INSERT doc_status_log
+    ST->>DB: COMMIT
+
+    T->>API: POST /repairs/{id}/finish {handler_desc, attachment_ids}
+    API->>ST: Transition(finish)
+    ST->>DB: BEGIN
+    ST->>DB: UPDATE status=repairing->confirming
+    ST->>DB: UPDATE asset_card SET biz_status='' WHERE id=card_id
+    ST->>DB: INSERT doc_status_log
+    ST->>DB: COMMIT
+
+%% ── S3 每日同步与 biz_status 的隔离（验证 R1） ──
+sequenceDiagram
+    participant SCH as 调度器(00:00)
+    participant SY as syncer.Service
+    participant MF as mergeOwnedFields
+    participant DB as MySQL
+
+    SCH->>SY: Run(incremental)
+    loop 每张星瀚卡(227)
+        SY->>MF: mergeOwnedFields(dst, src)
+        MF->>MF: dst.Status = src.Status("在用")
+        Note over MF: 逐字段赋值，不含 biz_status
+    end
+    SY->>DB: UPDATE asset_card SET <kingdeeOwnedColumns>, ext_json
+    Note over DB: SET 列表不含 biz_status → 维修中状态原样保留

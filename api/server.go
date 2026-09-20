@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -119,6 +120,27 @@ func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/count/plans/{id}/cancel", s.requirePerm(model.PermCountManage, s.handleCancelPlan))
 	mux.HandleFunc("GET /api/count/plans/{id}/items", s.handleListCountItems)
 	mux.HandleFunc("GET /api/count/plans/{id}/report", s.handleCountReport)
+
+	// —— 维修流程（见 docs/维修流程模块架构建议.md §3.3）——
+	// 读接口不门控，可见范围在数据行上收窄（api/scope.go 既有约定）。
+	mux.HandleFunc("POST /api/repairs", s.requirePerm(model.PermRepairReport, s.handleCreateRepair))
+	mux.HandleFunc("GET /api/repairs", s.handleListRepairs)
+	mux.HandleFunc("GET /api/repairs/{id}", s.handleGetRepair)
+	mux.HandleFunc("GET /api/repairs/{id}/logs", s.handleRepairLogs)
+	mux.HandleFunc("POST /api/repairs/{id}/accept", s.requirePerm(model.PermRepairDispatch, s.handleAcceptRepair))
+	mux.HandleFunc("POST /api/repairs/{id}/reject", s.requirePerm(model.PermRepairDispatch, s.handleRejectRepair))
+	mux.HandleFunc("POST /api/repairs/{id}/dispatch", s.requirePerm(model.PermRepairDispatch, s.handleDispatchRepair))
+	mux.HandleFunc("POST /api/repairs/{id}/take", s.requirePerm(model.PermRepairHandle, s.handleTakeRepair))
+	mux.HandleFunc("POST /api/repairs/{id}/finish", s.requirePerm(model.PermRepairHandle, s.handleFinishRepair))
+	mux.HandleFunc("POST /api/repairs/{id}/confirm", s.requirePerm(model.PermRepairReport, s.handleConfirmRepair))
+	mux.HandleFunc("POST /api/repairs/{id}/return", s.requirePerm(model.PermRepairReport, s.handleReturnRepair))
+	mux.HandleFunc("POST /api/repairs/{id}/cancel", s.requirePerm(model.PermRepairReport, s.handleCancelRepair))
+	mux.HandleFunc("POST /api/repairs/{id}/cost", s.requirePerm(model.PermRepairManage, s.handleRepairCost)) // P1-4
+	mux.HandleFunc("GET /api/repairs/{id}/attachments", s.handleRepairAttachments)
+	// 资产卡的维修记录：按卡查历次维修，可见范围按资产卡收窄（与履历/附件一致）
+	mux.HandleFunc("GET /api/assets/{id}/repairs", s.handleCardRepairs)
+	// 维修附件上传：独立路由（不放宽 /api/upload，见 api/repair_upload.go）
+	mux.HandleFunc("POST /api/repair-upload", s.requireAnyPerm(s.handleRepairUpload, model.PermRepairReport, model.PermRepairHandle))
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -145,6 +167,21 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) error {
 	return nil
 }
 
+// readJSONOptional 与 readJSON 相同，但允许空 body（视为「无参数」）。
+// 用于那些参数可选的流转动作：前端点「接单 / 确认」时可能不带请求体。
+func readJSONOptional(w http.ResponseWriter, r *http.Request, v any) error {
+	defer r.Body.Close()
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return errors.New("请求体解析失败：" + err.Error())
+	}
+	return nil
+}
+
 func pathID(r *http.Request) (int64, error) {
 	return strconv.ParseInt(r.PathValue("id"), 10, 64)
 }
@@ -160,14 +197,32 @@ func (s *Server) requirePerm(perm string, next http.HandlerFunc) http.HandlerFun
 	}
 }
 
+// requireAnyPerm 与 requirePerm 相同，但命中任意一个权限即放行。
+// 用于「多个角色各凭不同权限做同一件事」的接口，如维修附件上传
+// （报修人凭 repair.report、维修工凭 repair.handle）。风格与 requirePerm 一致。
+func (s *Server) requireAnyPerm(next http.HandlerFunc, perms ...string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		role := userFrom(r).Role
+		for _, p := range perms {
+			if model.Can(role, p) {
+				next(w, r)
+				return
+			}
+		}
+		writeErr(w, http.StatusForbidden, "当前角色没有此操作权限")
+	}
+}
+
 func (s *Server) handleEnums(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"statuses":       model.AssetStatuses,
-		"sources":        model.AssetSources,
-		"fin_asset_type": model.FinAssetTypes,
-		"fin_status":     model.FinStatuses,
-		"roles":          model.Roles,
-		"count_results":  model.CountResults,
+		"statuses":         model.AssetStatuses,
+		"sources":          model.AssetSources,
+		"fin_asset_type":   model.FinAssetTypes,
+		"fin_status":       model.FinStatuses,
+		"roles":            model.Roles,
+		"count_results":    model.CountResults,
+		"repair_statuses":  model.RepairStatuses,
+		"repair_urgencies": model.RepairUrgencies,
 	})
 }
 

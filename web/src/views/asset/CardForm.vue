@@ -78,8 +78,10 @@
               </el-col>
               <el-col :span="8">
                 <el-form-item label="状态">
+                  <!-- 维修中/调拨中不由用户手选（由单据驱动写入本地列 biz_status），
+                       但若这张卡当前就是这两个值之一，仍挂上以免下拉显示空白 -->
                   <el-select v-model="form.status" style="width: 100%">
-                    <el-option v-for="s in md.enums.statuses" :key="s" :label="s" :value="s" />
+                    <el-option v-for="s in statusOptions" :key="s" :label="s" :value="s" />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -427,7 +429,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ArrowLeft, Plus } from "@element-plus/icons-vue";
 import http from "../../api/client";
-import { money, pickSubmit, qty } from "../../api/meta";
+import { money, pickSubmit, qty, selectableStatuses } from "../../api/meta";
 import { useIsMobile } from "../../composables/useIsMobile";
 import DateSelect from "../../components/DateSelect.vue";
 
@@ -479,6 +481,12 @@ const sourceOptions = computed(() =>
 
 const finAssetTypeOptions = computed(() =>
   withCurrent(md.value.enums.fin_asset_type || [], form.value.fin_asset_type),
+);
+
+// 状态下拉：排除「维修中 / 调拨中」（由单据驱动，手填会被星瀚同步抹掉）。
+// 用 withCurrent 兜底：卡当前值若恰好是被排除的那个，仍作为一个选项挂上，避免显示空白。
+const statusOptions = computed(() =>
+  withCurrent(selectableStatuses(md.value.enums.statuses || []), form.value.status),
 );
 
 // 净值 = 原值 - 累计折旧，与后端 validateCard 的兜底口径一致

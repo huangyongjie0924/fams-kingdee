@@ -19,7 +19,7 @@
           <el-descriptions-item label="计量单位">{{ card.unit }}</el-descriptions-item>
           <el-descriptions-item label="数量">{{ qty(card.quantity) }}</el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="STATUS_TAG[card.status] || 'info'" size="small">{{ card.status }}</el-tag>
+            <el-tag :type="STATUS_TAG[card.display_status] || 'info'" size="small">{{ card.display_status }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="金额">{{ money(card.amount) }}</el-descriptions-item>
           <el-descriptions-item label="使用公司">{{ card.use_company_name }}</el-descriptions-item>
@@ -43,6 +43,8 @@
         </el-descriptions>
         <div class="ops">
           <el-button :icon="Printer" @click="printLabel">打印标签</el-button>
+          <!-- 扫码落地页的「报修」入口：存量 227 张标签零重印，扫完进详情再点一下（D6） -->
+          <el-button v-if="auth.can('repair.report')" type="primary" @click="goReport">报修</el-button>
         </div>
 
         <!-- 扫码后最想知道的是「这台机器现在要不要盘」，所以摆在详情正下方 -->
@@ -63,6 +65,19 @@
             >
               立即盘这一条
             </el-button>
+          </div>
+        </div>
+
+        <!-- 一台资产的历次维修记录：判断「该不该报废」时的依据（P0-6） -->
+        <div v-if="repairOrders.length" class="repair-strip">
+          <div v-for="r in repairOrders" :key="r.id" class="repair-row">
+            <span class="pcode">{{ r.code }}</span>
+            <el-tag :type="repairStatusTag(r.status)" size="small">{{ r.status_label }}</el-tag>
+            <span class="fault">{{ r.fault_desc }}</span>
+            <span class="muted">{{ handlerText(r) }}</span>
+            <div class="spacer" />
+            <span class="muted">{{ formatTime(r.created_at) }}</span>
+            <el-button size="small" link type="primary" @click="goRepair(r)">查看</el-button>
           </div>
         </div>
 
@@ -135,7 +150,7 @@ import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Printer } from "@element-plus/icons-vue";
 import http from "../../api/client";
-import { STATUS_TAG, money, qty } from "../../api/meta";
+import { STATUS_TAG, money, qty, repairStatusTag } from "../../api/meta";
 import { auth } from "../../stores/auth";
 import { useIsMobile } from "../../composables/useIsMobile";
 
@@ -150,6 +165,7 @@ const card = ref<any>(null);
 const history = ref<any[]>([]);
 const photos = ref<any[]>([]);
 const countItems = ref<any[]>([]);
+const repairOrders = ref<any[]>([]);
 const loadErr = ref("");
 
 const ACTIONS: Record<string, string> = {
@@ -157,10 +173,17 @@ const ACTIONS: Record<string, string> = {
   update: "修改",
   delete: "删除资产",
   import: "批量导入",
+  repair: "维修",
 };
 
 function actionLabel(a: string) {
   return ACTIONS[a] || a;
+}
+
+function handlerText(r: any): string {
+  if (r?.assignee_name) return r.assignee_name;
+  if (r?.vendor_name) return r.vendor_name;
+  return "待指派";
 }
 
 function formatTime(t: string) {
@@ -183,6 +206,15 @@ function printLabel() {
   router.push({ name: "asset-labels", query: { ids: String(props.cardId) } });
 }
 
+// 报修：带上资产编码跳报修页，报修页据此回填资产信息（D6 复用旧深链 + 落地页按钮）
+function goReport() {
+  router.push({ name: "repair-new", query: { asset_code: card.value?.asset_code || "" } });
+}
+
+function goRepair(r: any) {
+  router.push({ name: "repair-detail", params: { id: r.id } });
+}
+
 // 打开抽屉时 @open 和 watch(cardId) 会同时触发一次加载，不挡住就会把每个请求发两遍
 // （受限账号点范围外的资产会因此弹两个一模一样的错误 toast）。
 // loadedId 记的是「已经加载/正在加载的卡」，关抽屉时清空，所以重新打开同一张卡仍会刷新。
@@ -203,6 +235,7 @@ async function load() {
   history.value = [];
   photos.value = [];
   countItems.value = [];
+  repairOrders.value = [];
   loadErr.value = "";
   try {
     // 先单取主记录：范围外的卡在这里就 403 了，三个请求并排发会连弹三次同样的错。
@@ -215,14 +248,16 @@ async function load() {
     return;
   }
 
-  // 卡已经确认在范围内，这两条不该再失败；真失败了也只是少显示履历/照片，不拦抽屉
-  const [h, a] = await Promise.all([
+  // 卡已经确认在范围内，这几条不该再失败；真失败了也只是少显示某块，不拦抽屉
+  const [h, a, rp] = await Promise.all([
     http.get(`/assets/${id}/history`).catch(() => ({ data: [] })),
     http.get(`/assets/${id}/attachments`).catch(() => ({ data: [] })),
+    http.get(`/assets/${id}/repairs`).catch(() => ({ data: [] })),
   ]);
   if (id !== props.cardId) return;
   history.value = h.data || [];
   photos.value = (a.data || []).filter((x: any) => x.kind === "photo");
+  repairOrders.value = rp.data || [];
 
   // 单独取，且只给能盘点的角色取：盘点员账号没绑员工时后端会 403，
   // 放进上面的 Promise.all 会让整个详情抽屉打不开。
@@ -268,6 +303,33 @@ watch(() => props.cardId, load);
   background: #f4f9ff;
   border-radius: 4px;
   padding: 4px 8px;
+}
+
+.repair-strip {
+  margin-top: 12px;
+  border: 1px solid #fde2e2;
+  background: #fef4f4;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.repair-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+}
+
+.repair-row + .repair-row {
+  border-top: 1px dashed #fde2e2;
+}
+
+.fault {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .count-row {

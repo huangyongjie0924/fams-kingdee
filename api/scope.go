@@ -95,6 +95,65 @@ func denyOutOfScope(w http.ResponseWriter, c *model.AssetCard, sc model.AssetSco
 	return true
 }
 
+// repairScope 把登录用户翻译成维修单可见范围，写权限无关——只回答「能看见哪些行」。
+//
+// 与 assetScope 同一套约定：读接口不门控，范围限制在数据行上做。
+//   - 维修工：只看指派给自己的单
+//   - 员工（viewer / counter）：只看自己提交的单
+//   - 部门主管：本部门及下级部门的单（按单据的使用部门快照收窄）
+//   - admin / asset_manager：不限
+func (s *Server) repairScope(w http.ResponseWriter, r *http.Request) (model.RepairScope, bool) {
+	u := userFrom(r)
+
+	switch u.Role {
+	case model.RoleRepairTech:
+		if u.EmployeeID == 0 {
+			writeErr(w, http.StatusForbidden, "当前账号未绑定员工，无法查看维修单")
+			return model.RepairScope{}, false
+		}
+		return model.RepairScope{AssigneeEmpID: u.EmployeeID}, true
+
+	case model.RoleViewer, model.RoleCounter:
+		if u.EmployeeID == 0 {
+			writeErr(w, http.StatusForbidden, "当前账号未绑定员工，无法查看维修单")
+			return model.RepairScope{}, false
+		}
+		return model.RepairScope{ReporterEmpID: u.EmployeeID}, true
+
+	case model.RoleDeptHead:
+		deptID, err := s.st.UserDeptID(u.ID)
+		if err != nil {
+			log.Printf("repair scope: user=%d dept lookup: %v", u.ID, err)
+			writeErr(w, http.StatusInternalServerError, "解析可见范围失败")
+			return model.RepairScope{}, false
+		}
+		if deptID == 0 {
+			writeErr(w, http.StatusForbidden, "当前账号未设置部门，无法确定可见范围")
+			return model.RepairScope{}, false
+		}
+		ids, err := s.deptSubtree(deptID)
+		if err != nil {
+			log.Printf("repair scope: dept=%d subtree: %v", deptID, err)
+			writeErr(w, http.StatusInternalServerError, "解析可见范围失败")
+			return model.RepairScope{}, false
+		}
+		return model.RepairScope{DeptIDs: ids}, true
+	}
+
+	// admin / asset_manager 及未知角色不限制
+	return model.RepairScope{}, true
+}
+
+// denyRepairOutOfScope 在单据不在可见范围内时写 403 并返回 true。
+// 列表走 SQL 收口，单张单据（详情、日志、附件）走这里。
+func denyRepairOutOfScope(w http.ResponseWriter, o *model.RepairOrder, sc model.RepairScope) bool {
+	if sc.Allows(o) {
+		return false
+	}
+	writeErr(w, http.StatusForbidden, "该维修单不在你的可见范围内")
+	return true
+}
+
 // checkCardScope 是「先确认这张卡看得见，再看它的从属数据」的入口：
 // 履历、附件、盘点明细这类接口没有别的办法判范围。
 // 不限范围的角色直接放行，不为此多查一次库。

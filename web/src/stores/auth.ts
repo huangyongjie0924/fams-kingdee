@@ -22,14 +22,23 @@ function readUser(): AuthUser | null {
 }
 
 // 与后端 model.rolePermissions 保持一致：admin 恒有权限，未列出的角色按无权限处理。
+//
+// ⚠️ 这份表必须与后端逐项一致，否则会出现「按钮可见但点击 403」或「后端允许但界面没入口」。
+// 已修复的一次真实漂移：asset_manager 曾多出 "sync.manage"，而后端三个同步接口都挂了
+// requirePerm(PermSyncManage)（后端不给该角色）→ 按钮可见但点击 403。现以前端向后端对齐。
+//
+// repair.report 授给 viewer 是**有意为之**（后端同理）：报修是「服务到每一位员工」的核心动作，
+// 打破「viewer 纯只读」的既有约定，但报修天然自收窄（只看得到自己提交的单）。
 const rolePermissions: Record<string, string[]> = {
   asset_manager: [
-    "asset.manage", "master.manage", "sync.manage", "count.manage", "count.enter",
+    "asset.manage", "master.manage", "count.manage", "count.enter",
+    "repair.report", "repair.dispatch", "repair.approve", "repair.manage",
   ],
-  counter: ["count.enter"],
-  // dept_head 与 viewer 都是纯只读，差别在能看见哪些资产（见 scopeHint），不在能不能操作
-  dept_head: [],
-  viewer: [],
+  counter: ["count.enter", "repair.report"],
+  // dept_head 对台账纯只读；维修侧可报修、可审批（P1）
+  dept_head: ["repair.report", "repair.approve"],
+  repair_tech: ["repair.handle"],
+  viewer: ["repair.report"],
 };
 
 const roleLabels: Record<string, string> = {
@@ -37,6 +46,7 @@ const roleLabels: Record<string, string> = {
   asset_manager: "资产管理员",
   counter: "盘点员",
   dept_head: "部门负责人",
+  repair_tech: "维修工",
   viewer: "只读",
 };
 

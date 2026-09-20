@@ -54,7 +54,18 @@ type AssetCard struct {
 	SerialNo string  `json:"serial_no"`
 	Unit     string  `json:"unit"`
 	Status   string  `json:"status"`
-	Amount   float64 `json:"amount"`
+	// BizStatus 是**台账本地维护的业务状态**（维修中 / 未来的调拨中 / 领用中…），
+	// 与星瀚托管的生命周期状态 Status 物理分离。存在的唯一理由：Status 是星瀚托管列，
+	// 每天 00:00 的定时同步会把本地置的「维修中」重置回「在用」（见 docs/维修流程模块架构建议.md §1）。
+	//
+	// 硬约束：BizStatus **只有一个写入者**——维修单据状态机，且在单据事务内写；
+	// 绝不加入 kingdeeOwnedColumns / cardInitColumns / cardWriteColumns 任一清单，
+	// 也不出现在卡片编辑表单里（用户永远不能手填「维修中」）。
+	BizStatus string `json:"biz_status"`
+	// DisplayStatus 是**派生字段，不落库**：有效状态 = biz_status 非空 ? biz_status : status。
+	// 所有展示 / 筛选 / 导出只认它，优先级只有这一处实现（见 §1.5）。
+	DisplayStatus string  `json:"display_status"`
+	Amount        float64 `json:"amount"`
 	// Quantity 是金蝶的 assetamount：带计量单位的数量——房屋按平方米、设备按台/辆。
 	// 与 Amount（台账自填的金额）完全是两回事。
 	// 金蝶同步来的卡由同步托管（星瀚 >0 时覆盖，见 store.mergeOwnedFields）；
@@ -296,11 +307,13 @@ const (
 	RoleCounter      = "counter"
 	// RoleDeptHead 部门负责人：只看本部门（含下级）资产，只读
 	RoleDeptHead = "dept_head"
-	RoleViewer   = "viewer"
+	// RoleRepairTech 维修工：只看指派给自己的维修单，接单 / 报完工
+	RoleRepairTech = "repair_tech"
+	RoleViewer     = "viewer"
 )
 
 // Roles 供前端下拉展示，顺序即展示顺序
-var Roles = []string{RoleAdmin, RoleAssetManager, RoleCounter, RoleDeptHead, RoleViewer}
+var Roles = []string{RoleAdmin, RoleAssetManager, RoleCounter, RoleDeptHead, RoleRepairTech, RoleViewer}
 
 // 权限名：前后端共用同一套字符串（前端 stores/auth.ts 有一份等价的角色映射）
 const (
@@ -310,24 +323,53 @@ const (
 	PermCountManage  = "count.manage"
 	PermCountEnter   = "count.enter"
 	PermUserManage   = "user.manage"
+
+	// —— 维修流程权限位（P0 即定义，repair.approve / repair.manage 属 P1 用）——
+	// PermRepairReport：提交报修 + 对自己单据的确认 / 退回 / 撤单。
+	//   ⚠️ 它同时授予 viewer，是**有意为之**：打破「viewer 纯只读」的既有不变量。
+	//   报修正是「服务到每一位员工」的核心动作，且报修天然自收窄（只看得到自己提交的单）。
+	//   需要把「viewer 纯只读」改成「viewer 只读台账、可发起报修」。
+	PermRepairReport   = "repair.report"
+	PermRepairDispatch = "repair.dispatch"
+	PermRepairHandle   = "repair.handle"
+	PermRepairApprove  = "repair.approve"
+	PermRepairManage   = "repair.manage"
 )
 
 // rolePermissions 固定角色的权限表。admin 在 Can 里兜底放行，不必列出；
 // 表里没有的角色（含未知/拼错的值）一律按无权限处理。
+//
+// ⚠️ 这份表与前端 web/src/stores/auth.ts 的 rolePermissions 必须**逐项一致**，
+// 否则会出现「按钮可见但点击 403」或「后端允许但界面没入口」（已发生过一次真实 bug）。
 var rolePermissions = map[string]map[string]bool{
 	RoleAssetManager: {
 		PermAssetManage:  true,
 		PermMasterManage: true,
 		PermCountManage:  true,
 		PermCountEnter:   true,
+		// 维修：管理员受理 / 驳回 / 派工 / 取消，并登记费用
+		PermRepairReport:   true,
+		PermRepairDispatch: true,
+		PermRepairApprove:  true,
+		PermRepairManage:   true,
 	},
 	RoleCounter: {
-		PermCountEnter: true,
+		PermCountEnter:   true,
+		PermRepairReport: true,
 	},
-	// dept_head 与 viewer 一样是纯只读：读接口本就不查权限，写接口全被挡住。
-	// 两者真正的差别在 AssetScope——看得到多少行，不是能不能操作。
-	RoleDeptHead: {},
-	RoleViewer:   {},
+	// dept_head 对台账是纯只读；维修侧可报修、可审批（P1）。
+	RoleDeptHead: {
+		PermRepairReport:  true,
+		PermRepairApprove: true,
+	},
+	// 维修工：只负责接单 / 报完工
+	RoleRepairTech: {
+		PermRepairHandle: true,
+	},
+	// viewer 唯一的写权限是 repair.report（有意为之，见 PermRepairReport 注释）
+	RoleViewer: {
+		PermRepairReport: true,
+	},
 }
 
 func Can(role, perm string) bool {

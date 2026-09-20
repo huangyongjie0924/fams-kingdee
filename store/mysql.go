@@ -59,6 +59,12 @@ func (s *Store) migrate() error {
 	if err := s.addColumnIfMissing("asset_card", "quantity", "DECIMAL(18,4) NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	// biz_status 是台账本地业务状态列（维修中/…），与星瀚托管的 status 物理分离。
+	// 这是「维修状态不被每日同步抹掉」的唯一前提：只要它不进同步的三个列清单，
+	// 同步路径就逐字节不变（见 docs/维修流程模块架构建议.md §1、§1.4）。
+	if err := s.addColumnIfMissing("asset_card", "biz_status", "VARCHAR(16) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	// 「只读」账号按 user_emp_id 收窄列表，这列原本没索引，不加就是全表扫
 	if err := s.createIndexIfMissing("asset_card", "idx_card_user", "(user_emp_id)"); err != nil {
 		return err
@@ -320,6 +326,9 @@ var schema = []string{
 		serial_no VARCHAR(64) NOT NULL DEFAULT '',
 		unit VARCHAR(16) NOT NULL DEFAULT '',
 		status VARCHAR(16) NOT NULL DEFAULT '闲置',
+		-- biz_status 是台账本地维护的业务状态（维修中/…），与星瀚托管的 status 物理分离。
+		-- 绝不加入 kingdeeOwnedColumns / cardInitColumns / cardWriteColumns（见 store/sync.go 注释）。
+		biz_status VARCHAR(16) NOT NULL DEFAULT '',
 		amount DECIMAL(14,2) NOT NULL DEFAULT 0,
 		quantity DECIMAL(18,4) NOT NULL DEFAULT 0,
 		use_company_id BIGINT NOT NULL DEFAULT 0,
@@ -479,5 +488,80 @@ var schema = []string{
 		counted_at DATETIME DEFAULT NULL,
 		KEY idx_count_item_plan (plan_id),
 		KEY idx_count_item_assignee (assignee_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+	// —— 维修流程模块（见 docs/维修流程模块架构建议.md §2）——
+	// 维修单主表。与 count_plan 同构：单号 + 状态机 + 关联资产。
+	// 快照字段（asset_code/asset_name/use_dept_name/location）参照 count_item 做法；
+	// 外键一律 BIGINT，0 = 未设置哨兵值；单据靠终态归档，无 deleted_at。
+	`CREATE TABLE IF NOT EXISTS repair_order (
+		id BIGINT AUTO_INCREMENT PRIMARY KEY,
+		code VARCHAR(32) NOT NULL DEFAULT '',
+		card_id BIGINT NOT NULL,
+		asset_code VARCHAR(64) NOT NULL DEFAULT '',
+		asset_name VARCHAR(128) NOT NULL DEFAULT '',
+		reporter_emp_id BIGINT NOT NULL DEFAULT 0,
+		reporter_name VARCHAR(64) NOT NULL DEFAULT '',
+		use_dept_id BIGINT NOT NULL DEFAULT 0,
+		use_dept_name VARCHAR(64) NOT NULL DEFAULT '',
+		location VARCHAR(128) NOT NULL DEFAULT '',
+		fault_desc VARCHAR(500) NOT NULL DEFAULT '',
+		urgency VARCHAR(16) NOT NULL DEFAULT 'normal',
+		status VARCHAR(16) NOT NULL DEFAULT 'pending',
+		assignee_emp_id BIGINT NOT NULL DEFAULT 0,
+		assignee_name VARCHAR(64) NOT NULL DEFAULT '',
+		vendor_id BIGINT NOT NULL DEFAULT 0,
+		vendor_name VARCHAR(128) NOT NULL DEFAULT '',
+		handler_desc VARCHAR(500) NOT NULL DEFAULT '',
+		reject_reason VARCHAR(255) NOT NULL DEFAULT '',
+		cost DECIMAL(14,2) NOT NULL DEFAULT 0,
+		cost_dept_id BIGINT NOT NULL DEFAULT 0,
+		accept_by VARCHAR(64) NOT NULL DEFAULT '',
+		accept_at DATETIME DEFAULT NULL,
+		assign_at DATETIME DEFAULT NULL,
+		start_at DATETIME DEFAULT NULL,
+		finish_at DATETIME DEFAULT NULL,
+		confirm_at DATETIME DEFAULT NULL,
+		close_at DATETIME DEFAULT NULL,
+		created_by VARCHAR(64) NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		KEY idx_repair_card (card_id),
+		KEY idx_repair_status (status),
+		KEY idx_repair_reporter (reporter_emp_id),
+		KEY idx_repair_assignee (assignee_emp_id),
+		KEY idx_repair_dept (use_dept_id),
+		KEY idx_repair_created (created_at)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+	// 通用单据状态流转记录：纯 append-only 审计表、零业务逻辑，带 doc_type 判别式，
+	// 后续单据流（调拨/领用）直接复用（D2）。
+	`CREATE TABLE IF NOT EXISTS doc_status_log (
+		id BIGINT AUTO_INCREMENT PRIMARY KEY,
+		doc_type VARCHAR(32) NOT NULL,
+		doc_id BIGINT NOT NULL,
+		from_status VARCHAR(16) NOT NULL DEFAULT '',
+		to_status VARCHAR(16) NOT NULL DEFAULT '',
+		action VARCHAR(32) NOT NULL DEFAULT '',
+		operator VARCHAR(64) NOT NULL DEFAULT '',
+		remark VARCHAR(500) NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		KEY idx_doc_log (doc_type, doc_id, id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+	// 维修附件：归属语义与 asset_attachment 不同（按单据收敛），存储层复用 uploads/ 目录。
+	// repair_id=0 表示「先上传待绑定」，对齐 asset_attachment 的 card_id=0 约定。
+	`CREATE TABLE IF NOT EXISTS repair_attachment (
+		id BIGINT AUTO_INCREMENT PRIMARY KEY,
+		repair_id BIGINT NOT NULL DEFAULT 0,
+		card_id BIGINT NOT NULL DEFAULT 0,
+		kind VARCHAR(16) NOT NULL DEFAULT 'photo',
+		origin_name VARCHAR(255) NOT NULL DEFAULT '',
+		stored_path VARCHAR(255) NOT NULL,
+		size_bytes BIGINT NOT NULL DEFAULT 0,
+		uploaded_by VARCHAR(64) NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		KEY idx_repair_att (repair_id),
+		KEY idx_repair_att_card (card_id)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 }

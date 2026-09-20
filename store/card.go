@@ -10,7 +10,7 @@ import (
 )
 
 const cardSelect = `SELECT c.id, c.asset_code, c.name, c.category_id, cat.name,
-	c.spec, c.serial_no, c.unit, c.status, c.amount, c.quantity,
+	c.spec, c.serial_no, c.unit, c.status, c.biz_status, c.amount, c.quantity,
 	c.use_company_id, uc.name, c.use_dept_id, ud.name, c.user_emp_id, ue.name, c.use_status,
 	c.manager_emp_id, me.name, c.owner_company_id, oc.name, c.area_id, ar.name,
 	c.location, c.purchase_date, c.card_created_at, c.use_months, c.source, c.in_stock_no, c.rfid, c.remark,
@@ -36,9 +36,11 @@ LEFT JOIN employee mo ON mo.id = c.mt_owner_emp_id`
 
 // sortColumns 是排序字段白名单：请求里传的是 key，永远不会把用户输入拼进 SQL。
 var sortColumns = map[string]string{
-	"asset_code":    "c.asset_code",
-	"name":          "c.name",
-	"status":        "c.status",
+	"asset_code": "c.asset_code",
+	"name":       "c.name",
+	// 状态排序按「有效状态」（biz_status 非空取它，否则 status），与列表展示口径一致，
+	// 否则会出现「排序与显示不一致」。
+	"status":        "COALESCE(NULLIF(c.biz_status,''), c.status)",
 	"amount":        "c.amount",
 	"category":      "cat.name",
 	"purchase_date": "c.purchase_date",
@@ -72,7 +74,9 @@ func buildWhere(q model.ListQuery, sc model.AssetScope) (string, []any) {
 		args = append(args, kw, kw, kw, kw, kw, kw, kw, kw)
 	}
 	if len(q.Status) > 0 {
-		conds = append(conds, "c.status IN ("+placeholders(len(q.Status))+")")
+		// 状态筛选按「有效状态」：biz_status 非空取它，否则回落 status。
+		// 这是最易漏的一处——漏了会「筛维修中筛不出」或「筛出来但列表显示不一致」。
+		conds = append(conds, "COALESCE(NULLIF(c.biz_status,''), c.status) IN ("+placeholders(len(q.Status))+")")
 		for _, s := range q.Status {
 			args = append(args, s)
 		}
@@ -217,7 +221,7 @@ func scanCard(r rowScanner) (*model.AssetCard, error) {
 
 	err := r.Scan(
 		&c.ID, &c.AssetCode, &c.Name, &c.CategoryID, &catName,
-		&c.Spec, &c.SerialNo, &c.Unit, &c.Status, &c.Amount, &c.Quantity,
+		&c.Spec, &c.SerialNo, &c.Unit, &c.Status, &c.BizStatus, &c.Amount, &c.Quantity,
 		&c.UseCompanyID, &ucName, &c.UseDeptID, &udName, &c.UserEmpID, &ueName, &c.UseStatus,
 		&c.ManagerEmpID, &meName, &c.OwnerCompanyID, &ocName, &c.AreaID, &arName,
 		&c.Location, &purchaseDate, &cardCreatedAt, &c.UseMonths, &c.Source, &c.InStockNo, &c.RFID, &c.Remark,
@@ -248,7 +252,19 @@ func scanCard(r rowScanner) (*model.AssetCard, error) {
 	c.CardCreatedAt = dateTimeStr(cardCreatedAt)
 	c.FinEntryDate = dateStr(finEntryDate)
 	c.MtExpireDate = dateStr(mtExpireDate)
+	// 有效状态在此单点收敛：所有展示 / 筛选 / 导出都只认 DisplayStatus。
+	c.DisplayStatus = effectiveStatus(c.BizStatus, c.Status)
 	return &c, nil
+}
+
+// effectiveStatus 计算「有效状态」：本地业务状态（biz_status）非空时以它为准，
+// 否则回落到星瀚托管的生命周期状态。与 buildWhere / sortColumns 里的
+// COALESCE(NULLIF(biz_status,''), status) 逐字对应，改一处必须同步改另一处。
+func effectiveStatus(biz, status string) string {
+	if strings.TrimSpace(biz) != "" {
+		return biz
+	}
+	return status
 }
 
 func dateStr(t sql.NullTime) string {
@@ -416,7 +432,11 @@ func (s *Store) attachTags(items []model.AssetCard, ids []int64) error {
 	return nil
 }
 
-// cardWriteColumns 与 cardWriteArgs 必须一一对应
+// cardWriteColumns 与 cardWriteArgs 必须一一对应。
+//
+// ⚠️ biz_status 为台账本地列，禁止加入本清单：它只有一个写入者——维修单据状态机，
+// 且在单据事务内写。放进这里意味着卡片编辑表单能写它，用户就能手填「维修中」，
+// 与「状态真相由单据驱动」的约定冲突（见 docs/维修流程模块架构建议.md §1.3）。
 var cardWriteColumns = []string{
 	"asset_code", "name", "category_id", "spec", "serial_no", "unit", "status", "amount", "quantity",
 	"use_company_id", "use_dept_id", "user_emp_id", "manager_emp_id",
@@ -606,6 +626,15 @@ func ruleKey(q queryer, categoryID int64) int64 {
 
 func formatCode(prefix string, width int, seq int64) string {
 	return fmt.Sprintf("%s%0*d", prefix, width, seq)
+}
+
+// formatDocCode 生成单据号：<前缀><yyyymmdd><4 位序号>。
+//
+// 单据号的做法统一为「先 INSERT 拿自增 id、再回填编码」——id 全局唯一，
+// 于是编码天然唯一，不需要额外的序列表（那是过度设计）。
+// count_plan 的 PD<date><id> 与维修单的 WX<date><id> 共用这一个纯函数。
+func formatDocCode(prefix string, id int64) string {
+	return fmt.Sprintf("%s%s%04d", prefix, time.Now().Format("20060102"), id)
 }
 
 // UpdateCardStatus 批量改状态：一个事务内逐条比对旧值并写履历，状态没变的跳过

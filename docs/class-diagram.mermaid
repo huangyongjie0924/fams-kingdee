@@ -1,0 +1,79 @@
+%% FAMS 维修流程模块 · 数据模型类图
+%% 来源：docs/维修流程模块架构建议.md §2.6
+
+classDiagram
+    class AssetCard {
+        +int64 ID
+        +string AssetCode
+        +string Status          %% 星瀚托管
+        +string BizStatus       %% 台账本地（新增）
+        +string DisplayStatus   %% 派生：biz_status 非空取它，否则 status
+        +int64 UseDeptID
+        +int64 UserEmpID
+        +int64 MtVendorID
+        +string MtExpireDate
+    }
+    class RepairOrder {
+        +int64 ID
+        +string Code
+        +int64 CardID
+        +string AssetCode
+        +string AssetName
+        +int64 ReporterEmpID
+        +string ReporterName
+        +int64 UseDeptID
+        +string FaultDesc
+        +string Urgency
+        +string Status
+        +int64 AssigneeEmpID
+        +int64 VendorID
+        +string HandlerDesc
+        +string RejectReason
+        +float64 Cost
+        +int64 CostDeptID
+        +time CreatedAt
+    }
+    class DocStatusLog {
+        +int64 ID
+        +string DocType
+        +int64 DocID
+        +string FromStatus
+        +string ToStatus
+        +string Action
+        +string Operator
+        +string Remark
+        +time CreatedAt
+    }
+    class RepairAttachment {
+        +int64 ID
+        +int64 RepairID
+        +int64 CardID
+        +string Kind
+        +string OriginName
+        +string StoredPath
+        +int64 SizeBytes
+        +string UploadedBy
+    }
+    class AssetHistory {
+        +int64 ID
+        +int64 CardID
+        +string Action
+        +string Field
+        +string OldValue
+        +string NewValue
+        +string Operator
+    }
+    class RepairStore {
+        +CreateRepair(card, reporter) int64
+        +Transition(id, action, operator, remark) error
+        +ListRepairs(query, scope) ListResult
+        +GetRepair(id) RepairOrder
+        +ReconcileBizStatus() int
+    }
+
+    AssetCard "1" --> "0..*" RepairOrder : card_id（历次维修）
+    RepairOrder "1" --> "0..*" DocStatusLog : doc_type='repair'
+    RepairOrder "1" --> "0..*" RepairAttachment : repair_id
+    RepairOrder "1" --> "0..1" AssetHistory : 进入维修中写一条 action=repair
+    RepairStore ..> RepairOrder : 读写
+    RepairStore ..> AssetCard : 同事务更新 biz_status

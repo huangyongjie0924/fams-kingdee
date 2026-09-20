@@ -210,6 +210,9 @@ const (
 // 2026-09-17 星瀚补上 finentry 的 originalfincard_* 投影后转为托管：
 // 这三个数本来就该以星瀚为准，人工维护只是接口取不到时的临时方案。
 // 覆盖仍走 mergeOwnedFields 的「大于 0 才覆盖」，所以明细为 null 的重复行不会把值抹成 0。
+//
+// ⚠️ biz_status 为台账本地列，禁止加入本清单：它是维修状态不被每日同步抹掉的唯一前提，
+// 加进来同步会把它覆盖回空（见 docs/维修流程模块架构建议.md §1.4）。
 var kingdeeOwnedColumns = []string{
 	"name", "category_id", "spec", "unit", "quantity",
 	"use_dept_id", "user_emp_id", "use_status", "area_id", "location",
@@ -234,6 +237,8 @@ var kingdeeOwnedColumns = []string{
 // 只放进 INSERT 而不放进 kingdeeOwnedColumns：查找是按 `WHERE asset_code = ?` 做的，
 // 命中的行本来就同码，覆盖它没有意义；而万一将来改成按外部映射命中，
 // 本地码与星瀚码可能不同，那时覆盖会改掉标签/二维码指向的编码。
+//
+// ⚠️ biz_status 为台账本地列，禁止加入本清单（新建同步卡走列默认值 ''，见 §1.4）。
 var cardInitColumns = []string{"use_months", "asset_code"}
 
 func ownedCardValues(c *model.AssetCard) []any {

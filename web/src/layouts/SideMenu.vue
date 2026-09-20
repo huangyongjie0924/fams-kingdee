@@ -19,6 +19,16 @@
     <el-menu-item v-if="auth.can('count.enter')" index="/count/mine">
       <el-icon><Checked /></el-icon><span>我的盘点</span>
     </el-menu-item>
+    <!-- 维修流程：入口按权限出现，风格与既有菜单一致（全部 v-if="auth.can(...)"） -->
+    <el-menu-item v-if="auth.can('repair.report')" index="/repairs/mine">
+      <el-icon><Bell /></el-icon><span>我的报修</span>
+    </el-menu-item>
+    <el-menu-item v-if="auth.can('repair.handle')" index="/repairs?mine=1">
+      <el-icon><Tools /></el-icon><span>我的维修</span>
+    </el-menu-item>
+    <el-menu-item v-if="auth.can('repair.dispatch')" index="/repairs">
+      <el-icon><List /></el-icon><span>维修管理</span>
+    </el-menu-item>
     <el-sub-menu v-if="auth.can('master.manage')" index="master">
       <template #title>
         <el-icon><Setting /></el-icon><span>基础数据</span>

@@ -8,7 +8,8 @@
     <el-card v-else>
       <div class="toolbar">
         <span class="hint">
-          只读、盘点员绑定员工：只读看自己名下的资产，盘点员据此被指派资产；部门负责人选管辖部门，看本部门及全部下级部门。
+          只读、盘点员、维修工绑定员工：只读看自己名下资产与自己的报修，盘点员据此被指派资产，
+          维修工据此被指派维修单；部门负责人选管辖部门，看本部门及全部下级部门。
         </span>
         <span class="spacer" />
         <el-button v-if="canManage" type="primary" :icon="Plus" @click="open()">新增账号</el-button>
@@ -109,6 +110,7 @@ const roles = [
   { value: "asset_manager", label: "资产管理员" },
   { value: "counter", label: "盘点员" },
   { value: "dept_head", label: "部门负责人" },
+  { value: "repair_tech", label: "维修工" },
   { value: "viewer", label: "只读" },
 ];
 

@@ -76,8 +76,8 @@
         show-overflow-tooltip
       >
         <template #default="{ row }">
-          <el-tag v-if="col.prop === 'status'" :type="STATUS_TAG[row.status] || 'info'" size="small">
-            {{ row.status }}
+          <el-tag v-if="col.prop === 'status'" :type="STATUS_TAG[row.display_status] || 'info'" size="small">
+            {{ row.display_status }}
           </el-tag>
           <a v-else-if="col.prop === 'name'" class="link" @click="openDetail(row)">{{ row.name }}</a>
           <span v-else-if="col.qty">{{ qty(row[col.prop]) }}</span>
@@ -98,7 +98,7 @@
             @change="toggleSelect(row, $event)"
           />
           <span class="m-title">{{ row.name }}</span>
-          <el-tag :type="STATUS_TAG[row.status] || 'info'" size="small">{{ row.status }}</el-tag>
+          <el-tag :type="STATUS_TAG[row.display_status] || 'info'" size="small">{{ row.display_status }}</el-tag>
         </div>
         <div class="m-grid">
           <span class="k">资产编码</span><span>{{ row.asset_code || "-" }}</span>
@@ -136,7 +136,7 @@ import {
   Plus, Edit, Delete, Download, Search, Filter, SetUp, Switch, ArrowDown, Camera, Printer,
 } from "@element-plus/icons-vue";
 import http, { download } from "../../api/client";
-import { ASSET_COLUMNS, STATUS_TAG, money, qty } from "../../api/meta";
+import { ASSET_COLUMNS, STATUS_TAG, money, qty, selectableStatuses } from "../../api/meta";
 import { auth } from "../../stores/auth";
 import { useIsMobile } from "../../composables/useIsMobile";
 import { takeAssetCode } from "../../utils/deeplink";
@@ -308,7 +308,9 @@ watch(() => route.query.asset_code, resolveAssetCode, { immediate: true });
 
 onMounted(async () => {
   const [enums] = await Promise.all([http.get("/enums"), reload()]);
-  statuses.value = enums.data.statuses || [];
+  // 「调整状态」是让用户手选状态：排除维修中/调拨中（它们由单据驱动，手填会被同步抹掉）。
+  // 高级搜索里的状态筛选仍用全量枚举——「筛维修中」是有意义的查询。
+  statuses.value = selectableStatuses(enums.data.statuses || []);
 });
 defineExpose({ reload });
 </script>

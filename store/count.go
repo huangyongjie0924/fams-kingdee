@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"asset-mgr/model"
 )
@@ -109,7 +108,7 @@ func (s *Store) CreatePlan(name string, scope model.CountScope, remark, createdB
 	if err != nil {
 		return 0, err
 	}
-	code := fmt.Sprintf("PD%s%04d", time.Now().Format("20060102"), id)
+	code := formatDocCode("PD", id)
 	if _, err := tx.Exec(`UPDATE count_plan SET code = ? WHERE id = ?`, code, id); err != nil {
 		return 0, fmt.Errorf("set plan code: %w", err)
 	}

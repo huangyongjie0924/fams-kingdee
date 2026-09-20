@@ -17,54 +17,16 @@ var allowedUploadExt = map[string]bool{
 }
 
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(s.cfg.Server.MaxUploadMB << 20); err != nil {
-		writeErr(w, http.StatusBadRequest, "上传解析失败，文件可能超出大小限制")
+	name, origin, ext, size, ok := s.saveUploadedFile(w, r)
+	if !ok {
 		return
 	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "缺少上传文件")
-		return
-	}
-	defer file.Close()
-
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	if !allowedUploadExt[ext] {
-		writeErr(w, http.StatusBadRequest, "不支持的文件类型："+ext)
-		return
-	}
-
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		writeErr(w, http.StatusInternalServerError, "生成文件名失败")
-		return
-	}
-	name := hex.EncodeToString(buf) + ext
-
-	if err := os.MkdirAll(s.cfg.Server.UploadDir, 0o750); err != nil {
-		writeErr(w, http.StatusInternalServerError, "创建上传目录失败")
-		return
-	}
-	dst, err := os.Create(filepath.Join(s.cfg.Server.UploadDir, name))
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "保存文件失败")
-		return
-	}
-	defer dst.Close()
-
-	limited := io.LimitReader(file, s.cfg.Server.MaxUploadMB<<20)
-	size, err := io.Copy(dst, limited)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "写入文件失败")
-		return
-	}
-
 	cardID := atoi64(r.FormValue("card_id"))
 	kind := "file"
 	if ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
 		kind = "photo"
 	}
-	id, err := s.st.SaveAttachment(cardID, kind, header.Filename, name, size, operatorOf(r))
+	id, err := s.st.SaveAttachment(cardID, kind, origin, name, size, operatorOf(r))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "登记附件失败")
 		return
@@ -72,6 +34,56 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": id, "url": "/uploads/" + name, "kind": kind, "size": size,
 	})
+}
+
+// saveUploadedFile 从 multipart 请求里取 "file" 落盘到 uploads/，返回落盘名、原始名、
+// 大小、扩展名。校验失败时已写好响应并返回 ok=false。
+//
+// 维修附件（api/repair_upload.go）与资产档案照复用同一套存储规则：
+// 同一目录、同一随机名、同一扩展名白名单、同一大小上限 —— 不引入新的攻击面。
+func (s *Server) saveUploadedFile(w http.ResponseWriter, r *http.Request) (name, origin, ext string, size int64, ok bool) {
+	if err := r.ParseMultipartForm(s.cfg.Server.MaxUploadMB << 20); err != nil {
+		writeErr(w, http.StatusBadRequest, "上传解析失败，文件可能超出大小限制")
+		return "", "", "", 0, false
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "缺少上传文件")
+		return "", "", "", 0, false
+	}
+	defer file.Close()
+
+	ext = strings.ToLower(filepath.Ext(header.Filename))
+	if !allowedUploadExt[ext] {
+		writeErr(w, http.StatusBadRequest, "不支持的文件类型："+ext)
+		return "", "", "", 0, false
+	}
+
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		writeErr(w, http.StatusInternalServerError, "生成文件名失败")
+		return "", "", "", 0, false
+	}
+	name = hex.EncodeToString(buf) + ext
+
+	if err := os.MkdirAll(s.cfg.Server.UploadDir, 0o750); err != nil {
+		writeErr(w, http.StatusInternalServerError, "创建上传目录失败")
+		return "", "", "", 0, false
+	}
+	dst, err := os.Create(filepath.Join(s.cfg.Server.UploadDir, name))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "保存文件失败")
+		return "", "", "", 0, false
+	}
+	defer dst.Close()
+
+	limited := io.LimitReader(file, s.cfg.Server.MaxUploadMB<<20)
+	size, err = io.Copy(dst, limited)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "写入文件失败")
+		return "", "", "", 0, false
+	}
+	return name, header.Filename, ext, size, true
 }
 
 func (s *Server) handleListAttachments(w http.ResponseWriter, r *http.Request) {

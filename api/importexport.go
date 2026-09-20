@@ -95,7 +95,9 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		for i := range res.Items {
 			c := res.Items[i]
 			vals := []any{
-				c.AssetCode, c.Name, c.CategoryName, c.Spec, c.SerialNo, c.Unit, c.Status, c.Amount,
+				// 「状态」列写有效状态（display_status），与列表/详情口径一致；
+				// 写 c.Status 会让维修中的资产在导出里显示成「在用」。
+				c.AssetCode, c.Name, c.CategoryName, c.Spec, c.SerialNo, c.Unit, c.DisplayStatus, c.Amount,
 				c.UseCompanyName, c.UseDeptName, c.UserEmpName, c.ManagerEmpName, c.OwnerCompanyName,
 				c.AreaName, c.Location, c.PurchaseDate, c.UseMonths, c.Source, c.Remark,
 				c.FinOriginalValue, c.FinAccumDepreciaton, c.FinResidualRate, c.FinUseMonths, c.VendorName,
