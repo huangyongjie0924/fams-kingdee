@@ -30,6 +30,11 @@ var RepairStatuses = []string{
 	RepairConfirming, RepairDone, RepairRejected, RepairCancelled, RepairScrapping,
 }
 
+// RepairTerminalStatuses 是三个终态：已完工 / 已驳回 / 已撤单。
+// 「我的报修」「我的维修」这类在途计数一律 NOT IN 它——已结束的单不该再挂在员工首页。
+// 加新终态时改这里，而不是在各处散落写死状态列表。
+var RepairTerminalStatuses = []string{RepairDone, RepairRejected, RepairCancelled}
+
 // RepairStatusLabels 状态码 → 业务白话。前端展示一律走它，不暴露内部码。
 var RepairStatusLabels = map[string]string{
 	RepairPending:    "待受理",

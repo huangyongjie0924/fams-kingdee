@@ -619,6 +619,19 @@ type DashboardTodo struct {
 	Label string `json:"label"`
 	Count int64  `json:"count"`
 	Link  string `json:"link"`
+	// Level 是紧急程度的语义色提示（danger/warning/info，空串=不强调）。
+	// 与 count 一样由服务端按角色算好：前端只把值映射到配色，不按 key 猜颜色，
+	// 否则「同一个 key 在不同角色下紧急程度不同」的事实会在前端复制成第二套规则。
+	Level string `json:"level,omitempty"`
+}
+
+// DashboardStatCard 是首页指标卡，与 DashboardTodo 同形（key/label/count/link）。
+// 语义区别：todo 是「要你去做的事」（count=0 不出），stat 是「与你相关的量」（该角色适用就出，0 也出）。
+type DashboardStatCard struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Count int64  `json:"count"`
+	Link  string `json:"link"`
 }
 
 // DashboardStatusCount 是「状态 + 数量」的通用分组计数（资产状态分布 / 维修单状态分布共用）。
@@ -645,8 +658,11 @@ type DashboardOverview struct {
 	RepairStatus    []DashboardStatusCount   `json:"repair_status"`
 }
 
-// Dashboard 是 GET /api/dashboard 的响应体：一次请求返回「待办 + 概览」两块。
+// Dashboard 是 GET /api/dashboard 的响应体：一次请求返回「待办 + 指标卡 + 概览」三块。
+// Stats 是「与我相关」的量：设计宗旨要求第一屏内容 = 与我相关的事，缺了它前端只能拿
+// overview 的全量概览冒充员工首页。哪些卡出现由服务端按角色算好，前端只渲染。
 type Dashboard struct {
-	Todo     []DashboardTodo   `json:"todo"`
-	Overview DashboardOverview `json:"overview"`
+	Todo     []DashboardTodo     `json:"todo"`
+	Stats    []DashboardStatCard `json:"stats"`
+	Overview DashboardOverview   `json:"overview"`
 }

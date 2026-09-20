@@ -14,31 +14,44 @@ const repairOrderBy = `ORDER BY FIELD(status,
 	'pending','accepted','approving','dispatched','repairing','confirming','scrapping','done','rejected','cancelled'),
 	id DESC`
 
+// repairScopeConds 把可见范围拼成 WHERE 条件片段（与 model.RepairScope.Allows 同口径）。
+// 三种收窄口径命中其一即可见；零值 scope（不限）返回空片段。
+//
+// 抽成独立函数是为了让「列表」与「首页按归属人计数」共用同一份范围规则——
+// 两处各写一份必然漂移，而漂移的表现正是「员工看到了别人的数据」。
+func repairScopeConds(sc model.RepairScope) (conds []string, args []any) {
+	if !sc.Restricted() {
+		return []string{}, []any{}
+	}
+	parts := []string{}
+	if sc.ReporterEmpID > 0 {
+		parts = append(parts, "reporter_emp_id = ?")
+		args = append(args, sc.ReporterEmpID)
+	}
+	if sc.AssigneeEmpID > 0 {
+		parts = append(parts, "assignee_emp_id = ?")
+		args = append(args, sc.AssigneeEmpID)
+	}
+	if len(sc.DeptIDs) > 0 {
+		parts = append(parts, "use_dept_id IN ("+placeholders(len(sc.DeptIDs))+")")
+		for _, id := range sc.DeptIDs {
+			args = append(args, id)
+		}
+	}
+	return []string{"(" + strings.Join(parts, " OR ") + ")"}, args
+}
+
 // buildRepairWhere 把查询条件与可见范围拼成 WHERE。
 // 可见范围必须进 WHERE（而不是取回来再滤）：分页与 COUNT 都拼这条，后滤会让总数对不上。
 func buildRepairWhere(q model.RepairListQuery, sc model.RepairScope) (string, []any) {
 	conds := []string{"1=1"}
 	args := []any{}
 
-	// 三种收窄口径命中其一即可见（与 model.RepairScope.Allows 一致）
-	if sc.Restricted() {
-		parts := []string{}
-		if sc.ReporterEmpID > 0 {
-			parts = append(parts, "reporter_emp_id = ?")
-			args = append(args, sc.ReporterEmpID)
-		}
-		if sc.AssigneeEmpID > 0 {
-			parts = append(parts, "assignee_emp_id = ?")
-			args = append(args, sc.AssigneeEmpID)
-		}
-		if len(sc.DeptIDs) > 0 {
-			parts = append(parts, "use_dept_id IN ("+placeholders(len(sc.DeptIDs))+")")
-			for _, id := range sc.DeptIDs {
-				args = append(args, id)
-			}
-		}
-		conds = append(conds, "("+strings.Join(parts, " OR ")+")")
-	}
+	// 可见范围（三种收窄口径命中其一即可见）由 repairScopeConds 统一产出，
+	// 首页「与我相关」的计数复用同一份规则，不另写一套。
+	scConds, scArgs := repairScopeConds(sc)
+	conds = append(conds, scConds...)
+	args = append(args, scArgs...)
 
 	if len(q.Status) > 0 {
 		conds = append(conds, "status IN ("+placeholders(len(q.Status))+")")

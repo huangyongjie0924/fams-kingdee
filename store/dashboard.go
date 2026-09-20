@@ -126,6 +126,78 @@ func (s *Store) CountRepairsByStatuses(statuses []string, sc model.RepairScope) 
 	return n, nil
 }
 
+// AssetTotalByHolder 统计「这个人名下」的资产数：user_emp_id = empID，且在可见范围内。
+//
+// empID <= 0 一律返回 0，绝不退化成全量：账号没绑员工时「与我相关的资产」正确答案是 0，
+// 返回全量会让员工首页变成管理员首页（正是本次改动要修的毛病）。
+// 可见范围复用 scopeConds，与列表/总数同一口径。
+func (s *Store) AssetTotalByHolder(sc model.AssetScope, empID int64) (int64, error) {
+	if empID <= 0 {
+		return 0, nil
+	}
+	conds, args := scopeConds(sc)
+	conds = append(conds, "c.user_emp_id = ?")
+	args = append(args, empID)
+
+	var n int64
+	q := "SELECT COUNT(*) FROM asset_card c WHERE " + strings.Join(conds, " AND ")
+	if err := s.db.QueryRow(q, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count assets by holder: %w", err)
+	}
+	return n, nil
+}
+
+// repairOwnerColumns 是 countMyRepairsByOwner 允许的归属列白名单。
+// 列名无法作为 SQL 参数绑定，只能拼进语句，故用白名单把取值钉死在这两列上。
+var repairOwnerColumns = map[string]bool{
+	"reporter_emp_id": true,
+	"assignee_emp_id": true,
+}
+
+// countMyRepairsByOwner 数「归属人是 empID、且还在途」的维修单：
+// 归属列由 ownerCol 指定，在途 = status NOT IN（三个终态），可见范围复用 repairScopeConds。
+//
+// 两个对外方法（报修人视角 / 维修工视角）只差归属列，故共用一个实现，不复制两份 SQL。
+func (s *Store) countMyRepairsByOwner(ownerCol string, empID int64, sc model.RepairScope) (int64, error) {
+	if empID <= 0 {
+		return 0, nil
+	}
+	if !repairOwnerColumns[ownerCol] {
+		return 0, fmt.Errorf("unsupported repair owner column: %q", ownerCol)
+	}
+
+	conds := []string{"1=1"}
+	args := []any{}
+	scConds, scArgs := repairScopeConds(sc)
+	conds = append(conds, scConds...)
+	args = append(args, scArgs...)
+	conds = append(conds, ownerCol+" = ?")
+	args = append(args, empID)
+	conds = append(conds, "status NOT IN ("+placeholders(len(model.RepairTerminalStatuses))+")")
+	for _, st := range model.RepairTerminalStatuses {
+		args = append(args, st)
+	}
+
+	var n int64
+	q := "SELECT COUNT(*) FROM repair_order WHERE " + strings.Join(conds, " AND ")
+	if err := s.db.QueryRow(q, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count my repairs by %s: %w", ownerCol, err)
+	}
+	return n, nil
+}
+
+// CountMyRepairsAsReporter 我报修的、尚未结束的维修单数（员工视角「我的报修」）。
+// empID <= 0 返回 0，不退化为全量。
+func (s *Store) CountMyRepairsAsReporter(empID int64, sc model.RepairScope) (int64, error) {
+	return s.countMyRepairsByOwner("reporter_emp_id", empID, sc)
+}
+
+// CountMyRepairsAsAssignee 派给我、尚未结束的维修单数（维修工视角「我的维修」）。
+// empID <= 0 返回 0，不退化为全量。
+func (s *Store) CountMyRepairsAsAssignee(empID int64, sc model.RepairScope) (int64, error) {
+	return s.countMyRepairsByOwner("assignee_emp_id", empID, sc)
+}
+
 // PendingCountItems 盘点员「我的待盘点」：指派给我、且尚未录入结果的盘点明细。
 //
 // 这是**专用窄化**，刻意不复用 asset/repair scope——count_item 不在这两套范围里
