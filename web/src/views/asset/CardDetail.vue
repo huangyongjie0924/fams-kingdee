@@ -44,7 +44,8 @@
         <div class="ops">
           <el-button :icon="Printer" @click="printLabel">打印标签</el-button>
           <!-- 扫码落地页的「报修」入口：存量 227 张标签零重印，扫完进详情再点一下（D6） -->
-          <el-button v-if="auth.can('repair.report')" type="primary" @click="goReport">报修</el-button>
+          <!-- 仅设备类（分类被标记为可维修）才显示报修；后端仍独立拦截，此处隐藏只是体验 -->
+          <el-button v-if="auth.can('repair.report') && card?.category_repairable" type="primary" @click="goReport">报修</el-button>
         </div>
 
         <!-- 扫码后最想知道的是「这台机器现在要不要盘」，所以摆在详情正下方 -->

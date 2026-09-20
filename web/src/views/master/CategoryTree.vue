@@ -10,6 +10,13 @@
       <el-table v-if="!isMobile" :data="tree" row-key="id" border default-expand-all>
         <el-table-column prop="name" label="分类名称" min-width="220" />
         <el-table-column prop="code" label="编码" width="120" />
+        <el-table-column label="可维修" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.repairable ? 'success' : 'info'" size="small">
+              {{ row.repairable ? "可维修" : "不可维修" }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="use_months" label="默认使用期限(月)" width="160" align="right" />
         <el-table-column prop="residual_rate" label="默认残值率(%)" width="140" align="right" />
         <el-table-column prop="sort_index" label="排序" width="90" align="right" />
@@ -37,7 +44,7 @@
               <span class="m-muted">{{ data.code }}</span>
             </div>
             <div class="m-tree-line m-muted">
-              期限 {{ data.use_months ?? "-" }} 月 · 残值 {{ data.residual_rate ?? "-" }}% · 排序 {{ data.sort_index }}
+              期限 {{ data.use_months ?? "-" }} 月 · 残值 {{ data.residual_rate ?? "-" }}% · 排序 {{ data.sort_index }} · {{ data.repairable ? "可维修" : "不可维修" }}
             </div>
             <div v-if="auth.can('master.manage')" class="m-tree-ops">
               <el-button link type="primary" size="small" @click.stop="openNew(data)">新增子级</el-button>
@@ -71,6 +78,10 @@
         <el-form-item label="排序">
           <el-input-number v-model="editing.sort_index" :min="0" :controls="false" style="width: 100%" />
         </el-form-item>
+        <el-form-item label="是否可维修">
+          <el-switch v-model="editing.repairable" active-text="可维修" inactive-text="不可维修" />
+          <div class="form-hint">勾选后，该分类下的资产才能提交维修单。</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialog = false">取消</el-button>
@@ -99,7 +110,9 @@ async function load() {
 }
 
 function openNew(parent?: any) {
-  editing.value = { id: 0, parent_id: parent?.id || 0, name: "", code: "", use_months: 0, residual_rate: 5, sort_index: 0 };
+  // 新分类默认不可维修（保守，与 asset_category.repairable 列 DEFAULT 0 一致）：
+  // 宁可管理员显式勾选，也不让新分类默认可报修。
+  editing.value = { id: 0, parent_id: parent?.id || 0, name: "", code: "", use_months: 0, residual_rate: 5, sort_index: 0, repairable: false };
   dialog.value = true;
 }
 
@@ -130,5 +143,11 @@ onMounted(load);
 .title {
   font-size: 15px;
   font-weight: 600;
+}
+
+.form-hint {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

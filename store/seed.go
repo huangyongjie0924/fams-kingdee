@@ -11,14 +11,18 @@ func (s *Store) Seed(codePrefix string, seqWidth int) error {
 	}
 
 	if err := s.seedIfEmpty("asset_category", []string{
-		`INSERT INTO asset_category (name, code, use_months, residual_rate, sort_index) VALUES
-			('土地资产', '0201', 0, 0, 1),
-			('房屋及建筑物', '0202', 240, 5, 2),
-			('机器设备', '0203', 120, 5, 3),
-			('运输工具', '0204', 48, 5, 4),
-			('电子设备', '0205', 36, 5, 5),
-			('办公设备', '0206', 60, 5, 6),
-			('其他', '0299', 60, 5, 7)`,
+		// repairable 必须显式写死，不能省：migrate() 先于 Seed() 执行，全新空库部署时
+		// 迁移里的 backfill（UPDATE ... WHERE code IN ('0203'..'0206')）跑在空表上是 no-op，
+		// 随后这里的 INSERT 若取列默认 0，那 4 个本该可维修的分类会被静默置为不可维修。
+		// 取值与迁移 backfill 逐字对齐：机器设备/运输工具/电子设备/办公设备 = 1，其余 = 0。
+		`INSERT INTO asset_category (name, code, use_months, residual_rate, sort_index, repairable) VALUES
+			('土地资产', '0201', 0, 0, 1, 0),
+			('房屋及建筑物', '0202', 240, 5, 2, 0),
+			('机器设备', '0203', 120, 5, 3, 1),
+			('运输工具', '0204', 48, 5, 4, 1),
+			('电子设备', '0205', 36, 5, 5, 1),
+			('办公设备', '0206', 60, 5, 6, 1),
+			('其他', '0299', 60, 5, 7, 0)`,
 	}); err != nil {
 		return err
 	}

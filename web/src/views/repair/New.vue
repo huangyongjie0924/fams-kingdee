@@ -6,7 +6,10 @@
         <span class="title">设备报修</span>
       </div>
 
+      <!-- 扫码引导语仅在「尚未确定资产」或「资产可维修」时显示：
+           资产不可维修时会改为下方警告，避免两句话自相矛盾 -->
       <el-alert
+        v-if="!card || card.category_repairable"
         type="info"
         :closable="false"
         show-icon
@@ -88,9 +91,17 @@
             </el-upload>
             <div class="muted">可选，最多 3 张，单张 ≤ 10MB</div>
           </el-form-item>
-          <el-form-item>
+          <el-form-item v-if="card.category_repairable">
             <el-button type="primary" :loading="submitting" @click="submit">提交报修</el-button>
           </el-form-item>
+          <el-alert
+            v-else
+            type="warning"
+            :closable="false"
+            show-icon
+            title="该资产所属分类不支持报修，请联系资产管理员"
+            description="只有设备类（可维修分类）的资产才能提交维修单。"
+          />
         </el-form>
       </template>
     </el-card>
@@ -182,6 +193,11 @@ async function resolveByCode(code: string) {
 async function submit() {
   if (!card.value) {
     ElMessage.warning("请先确定要报修的资产");
+    return;
+  }
+  // 前端兜底：按钮已隐藏，但直连接口 / 状态竞争仍可能走到这里；后端才是最终底线
+  if (!card.value.category_repairable) {
+    ElMessage.warning("该资产所属分类不支持报修，请联系资产管理员");
     return;
   }
   await formRef.value.validate();

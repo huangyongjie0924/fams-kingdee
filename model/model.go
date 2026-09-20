@@ -78,6 +78,12 @@ type AssetCard struct {
 	// 「数量」这类托管字段能不能编辑。不要在 cardWriteColumns 里加它。
 	Synced bool `json:"synced,omitempty"`
 
+	// CategoryRepairable 是**派生字段，不落库**：所属分类是否允许提交维修单。
+	// 由 cardSelect 的 COALESCE(cat.repairable, 0) 带出（LEFT JOIN 未匹配或
+	// category_id 为哨兵值 0 时为 0 = 不可维修），故不进入任何写列清单。
+	// 刻意不用 omitempty：false 也必须序列化到前端，前端靠它决定是否隐藏报修按钮。
+	CategoryRepairable bool `json:"category_repairable"`
+
 	UseCompanyID   int64  `json:"use_company_id"`
 	UseCompanyName string `json:"use_company_name,omitempty"`
 	UseDeptID      int64  `json:"use_dept_id"`

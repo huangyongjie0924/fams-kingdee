@@ -10,6 +10,7 @@ import (
 )
 
 const cardSelect = `SELECT c.id, c.asset_code, c.name, c.category_id, cat.name,
+	COALESCE(cat.repairable, 0),
 	c.spec, c.serial_no, c.unit, c.status, c.biz_status, c.amount, c.quantity,
 	c.use_company_id, uc.name, c.use_dept_id, ud.name, c.user_emp_id, ue.name, c.use_status,
 	c.manager_emp_id, me.name, c.owner_company_id, oc.name, c.area_id, ar.name,
@@ -221,6 +222,7 @@ func scanCard(r rowScanner) (*model.AssetCard, error) {
 
 	err := r.Scan(
 		&c.ID, &c.AssetCode, &c.Name, &c.CategoryID, &catName,
+		&c.CategoryRepairable,
 		&c.Spec, &c.SerialNo, &c.Unit, &c.Status, &c.BizStatus, &c.Amount, &c.Quantity,
 		&c.UseCompanyID, &ucName, &c.UseDeptID, &udName, &c.UserEmpID, &ueName, &c.UseStatus,
 		&c.ManagerEmpID, &meName, &c.OwnerCompanyID, &ocName, &c.AreaID, &arName,

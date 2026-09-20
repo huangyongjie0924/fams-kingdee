@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -116,6 +117,16 @@ func (s *Server) handleCreateRepair(w http.ResponseWriter, r *http.Request) {
 	}
 	if card == nil {
 		writeErr(w, http.StatusNotFound, "资产不存在")
+		return
+	}
+
+	// —— 不可维修分类拦截（三层防线的底线）——
+	// 只有设备类（分类被管理员打了「可维修」标签）的资产才能报修。判定用 cardSelect
+	// 带出的派生字段 CategoryRepairable，不信前端传来的任何标记：前端隐藏按钮只是体验，
+	// 后端独立拦住才是底线（前端可被绕过）。COALESCE 保证悬空分类 / category_id=0 时为 false。
+	if !card.CategoryRepairable {
+		writeErr(w, http.StatusBadRequest,
+			fmt.Sprintf("「%s」类资产不支持报修，如需维修请联系资产管理员", card.CategoryName))
 		return
 	}
 
