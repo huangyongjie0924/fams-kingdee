@@ -504,12 +504,24 @@ type refReport struct {
 	BrokenCards                            []string
 }
 
+// querier 是 inspect 需要的最小数据库接口：*sql.DB 与 *sql.Tx 都满足。
+//
+// 收窄到接口而非 *sql.DB，是为了让调用方（尤其是测试）能把「读参考值」与
+// inspect 的多条查询放进同一个事务、共用一份 MVCC 快照——inspect 由 15 条
+// 标量 COUNT + 1 条明细拼成，本就没有单语句的快照一致性，共享库上的并发写
+// 会让分项与参考值落在不同快照上、算出「可见+软删 ≠ 总数」的假红。
+// 收窄后也为将来切独立测试库留出空间。
+type querier interface {
+	QueryRow(query string, args ...any) *sql.Row
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
 // inspect 统计重建后的引用完整性。
 //
 // ⚠ 卡片一律只统计 deleted_at IS NULL 的：软删除的卡在界面上根本不显示，
 // 把它们算进"断链"会报出一批用户看不到、也不需要处理的卡，
 // 让人以为影响面比实际大。软删除卡单独报一行，只作信息。
-func inspect(db *sql.DB) (*refReport, error) {
+func inspect(db querier) (*refReport, error) {
 	r := &refReport{}
 	scalar := []struct {
 		dst   *int

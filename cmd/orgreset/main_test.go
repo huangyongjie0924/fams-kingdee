@@ -1,11 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"asset-mgr/config"
 )
@@ -103,31 +103,29 @@ func testDB(t *testing.T) *sql.DB {
 func TestInspectSplitsVisibleAndSoftDeletedCards(t *testing.T) {
 	db := testDB(t)
 
-	// 快照一致性：本用例连的是共享库，`go test ./...` 会并行跑其它包，它们会建/删探针卡。
-	// 「总数」与 inspect 的分项若落在不同快照上，会算出「可见+软删 ≠ 总数」的假红
-	// （实测：总数读 204、inspect 读到 203，差值恰是并发包刚删掉的探针卡）。
-	// 故先取到「inspect 前后总数不变」的静止快照再断言；若共享库持续被写入则跳过，不误报。
-	var total, totalAfter int
-	var r *refReport
-	for attempt := 0; ; attempt++ {
-		if err := db.QueryRow("SELECT COUNT(*) FROM asset_card").Scan(&total); err != nil {
-			t.Fatalf("统计 asset_card 失败: %v", err)
-		}
-		rep, err := inspect(db)
-		if err != nil {
-			t.Fatalf("体检失败: %v", err)
-		}
-		r = rep
-		if err := db.QueryRow("SELECT COUNT(*) FROM asset_card").Scan(&totalAfter); err != nil {
-			t.Fatalf("统计 asset_card 失败: %v", err)
-		}
-		if total == totalAfter {
-			break
-		}
-		if attempt >= 5 {
-			t.Skipf("共享库持续被并发写入（总数 %d→%d），跳过快照断言", total, totalAfter)
-		}
-		time.Sleep(200 * time.Millisecond)
+	// 快照一致性：inspect 由 15 条标量 COUNT + 1 条明细拼成，测试自己还要读一次总数——
+	// 一次断言跨 ≥3 个非原子读。连的是共享库时，别的包/应用/星瀚同步会改卡表，各读落在
+	// 不同快照上就会算出「可见+软删 ≠ 总数」的假红。故把「读总数」与「inspect」放进
+	// 同一个 REPEATABLE READ 只读事务，共用一份 MVCC 快照。
+	//
+	// 断言在任何情况下都必须执行：建事务失败是 t.Fatalf，绝不跳过——
+	// 守卫被静默吞掉比守卫失败更糟（本用例守的是「软删除卡不进断链统计」）。
+	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{
+		Isolation: sql.LevelRepeatableRead,
+		ReadOnly:  true,
+	})
+	if err != nil {
+		t.Fatalf("开启只读快照事务失败: %v", err)
+	}
+	defer tx.Rollback()
+
+	var total int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM asset_card").Scan(&total); err != nil {
+		t.Fatalf("统计 asset_card 失败: %v", err)
+	}
+	r, err := inspect(tx)
+	if err != nil {
+		t.Fatalf("体检失败: %v", err)
 	}
 
 	if r.Cards+r.SoftDeletedCards != total {
