@@ -74,6 +74,24 @@ func (s *Store) migrate() error {
 	if err := s.addColumnIfMissing("sys_user", "dept_id", "BIGINT NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	// asset_category.repairable 是台账本地列：该分类下的资产是否允许提交维修单。
+	// 之所以敢在分类表加本地列（而不像 status 那样被每日同步抹掉），唯一依据是
+	// 「同步链路对 asset_category 只有 INSERT、没有 UPDATE」——由
+	// store/category_guard_test.go 的 TestCategorySyncHasNoUpdatePath 长期钉死
+	// （见 docs/增量架构-可维修标签与首页.md §1.1）。
+	//
+	// 用 addColumnIfMissingBackfill：backfill 只在列确实不存在、本次刚加时执行一次，
+	// 不会每次启动都把管理员手工改过的值重置回默认值（该函数语义见下方实现）。
+	// 老板已拍板：机器设备(0203)/运输工具(0204)/电子设备(0205)/办公设备(0206) = 可维修；
+	// 其余（土地资产 0201 / 房屋及建筑物 0202·0302 / 建筑物 0101 / 土地使用权 0102 / 其他 0299）
+	// = 不可维修（取列默认 0）。
+	//
+	// 按 code 而非 id 匹配：seed 只种 7 条，生产库有 10 条（另 3 条来自导入），按 id 写死会在生产错位。
+	if err := s.addColumnIfMissingBackfill("asset_category", "repairable",
+		"TINYINT(1) NOT NULL DEFAULT 0",
+		"UPDATE asset_category SET repairable = 1 WHERE code IN ('0203','0204','0205','0206')"); err != nil {
+		return err
+	}
 	return s.migrateOrg()
 }
 
@@ -230,6 +248,9 @@ var schema = []string{
 		use_months INT NOT NULL DEFAULT 0,
 		residual_rate DECIMAL(6,3) NOT NULL DEFAULT 0,
 		sort_index INT NOT NULL DEFAULT 0,
+		-- repairable 是台账本地列：该分类下的资产是否允许提交维修单。0=不可维修，1=可维修。
+		-- 同步链路对分类只 INSERT、不 UPDATE，故不会被每日同步抹掉（见 store/category_guard_test.go）。
+		repairable TINYINT(1) NOT NULL DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		KEY idx_cat_parent (parent_id)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,

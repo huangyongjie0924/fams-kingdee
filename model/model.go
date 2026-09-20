@@ -215,7 +215,12 @@ type TreeNode struct {
 	UseMonths    int         `json:"use_months,omitempty"`
 	ResidualRate float64     `json:"residual_rate,omitempty"`
 	SortIndex    int         `json:"sort_index"`
-	Children     []*TreeNode `json:"children,omitempty"`
+	// Repairable 仅对分类（asset_category）有意义：该分类下的资产是否允许提交维修单。
+	// 它是**台账本地列**——同步链路对分类只有 INSERT、没有 UPDATE，故不会被每日同步抹掉
+	// （依据见 docs/增量架构-可维修标签与首页.md §1.1，由 store/category_guard_test.go 钉死）。
+	// asset_area 复用本结构但不使用该字段，omitempty 让区域 JSON 与从前逐字节一致。
+	Repairable bool        `json:"repairable,omitempty"`
+	Children   []*TreeNode `json:"children,omitempty"`
 }
 
 type Company struct {

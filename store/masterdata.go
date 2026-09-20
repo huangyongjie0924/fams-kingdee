@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Store) ListCategories() ([]*model.TreeNode, error) {
-	rows, err := s.db.Query(`SELECT id, parent_id, name, code, use_months, residual_rate, sort_index
+	rows, err := s.db.Query(`SELECT id, parent_id, name, code, use_months, residual_rate, sort_index, repairable
 		FROM asset_category ORDER BY sort_index, id`)
 	if err != nil {
 		return nil, fmt.Errorf("query categories: %w", err)
@@ -18,7 +18,7 @@ func (s *Store) ListCategories() ([]*model.TreeNode, error) {
 	nodes := []*model.TreeNode{}
 	for rows.Next() {
 		n := &model.TreeNode{}
-		if err := rows.Scan(&n.ID, &n.ParentID, &n.Name, &n.Code, &n.UseMonths, &n.ResidualRate, &n.SortIndex); err != nil {
+		if err := rows.Scan(&n.ID, &n.ParentID, &n.Name, &n.Code, &n.UseMonths, &n.ResidualRate, &n.SortIndex, &n.Repairable); err != nil {
 			return nil, err
 		}
 		nodes = append(nodes, n)
@@ -68,16 +68,19 @@ func buildTree(nodes []*model.TreeNode) []*model.TreeNode {
 }
 
 func (s *Store) SaveCategory(n *model.TreeNode) (int64, error) {
+	// ⚠️ INSERT 与 UPDATE 两条语句都必须带上 repairable：漏任一条都会导致
+	// 保存分类时「可维修」标签被静默清空（漏 INSERT = 新分类永远不可维修；
+	// 漏 UPDATE = 开关保存无效/关不掉）。见 docs/增量架构-可维修标签与首页.md §1.6。
 	if n.ID == 0 {
-		res, err := s.db.Exec(`INSERT INTO asset_category (name, code, parent_id, use_months, residual_rate, sort_index)
-			VALUES (?, ?, ?, ?, ?, ?)`, n.Name, n.Code, n.ParentID, n.UseMonths, n.ResidualRate, n.SortIndex)
+		res, err := s.db.Exec(`INSERT INTO asset_category (name, code, parent_id, use_months, residual_rate, sort_index, repairable)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, n.Name, n.Code, n.ParentID, n.UseMonths, n.ResidualRate, n.SortIndex, n.Repairable)
 		if err != nil {
 			return 0, err
 		}
 		return res.LastInsertId()
 	}
-	_, err := s.db.Exec(`UPDATE asset_category SET name=?, code=?, parent_id=?, use_months=?, residual_rate=?, sort_index=?
-		WHERE id=?`, n.Name, n.Code, n.ParentID, n.UseMonths, n.ResidualRate, n.SortIndex, n.ID)
+	_, err := s.db.Exec(`UPDATE asset_category SET name=?, code=?, parent_id=?, use_months=?, residual_rate=?, sort_index=?, repairable=?
+		WHERE id=?`, n.Name, n.Code, n.ParentID, n.UseMonths, n.ResidualRate, n.SortIndex, n.Repairable, n.ID)
 	return n.ID, err
 }
 
