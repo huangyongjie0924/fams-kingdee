@@ -270,11 +270,15 @@ def build():
     names = dist_assets()
 
     print("[2/4] 交叉编译 linux/amd64…")
-    # -trimpath：不把绝对路径编进二进制，换台机器/换个目录才可能复现出同一份产物。
+    # 统一构建配方，必须与 README「构建与部署」一节逐字一致：
+    #   -trimpath        不把本机绝对路径编进去，换台机器/换个目录才可能复现出同一份产物
+    #   -ldflags="-s -w" 去掉符号表与 DWARF，体积小 24%，且与线上实际跑的产物参数一致
+    #                    （buildinfo 在独立的 .go.buildinfo 段，-s -w 不影响 go version -m）
+    #   CGO_ENABLED=0    显式关掉，目标机 CentOS 7、DB 驱动是纯 Go，没有 libc 依赖的理由
     # 环境变量走 env=，不能写成 "GOOS=linux go build"（Windows 上 shell 是 cmd.exe，不认）。
     sh(
-        ["go", "build", "-trimpath", "-o", "deploy/asset-mgr", "."],
-        env={"GOOS": "linux", "GOARCH": "amd64"},
+        ["go", "build", "-trimpath", "-ldflags=-s -w", "-o", "deploy/asset-mgr", "."],
+        env={"GOOS": "linux", "GOARCH": "amd64", "CGO_ENABLED": "0"},
     )
     if not os.path.exists(LOCAL_BINARY):
         sys.exit("编译未产出 deploy/asset-mgr")

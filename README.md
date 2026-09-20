@@ -352,8 +352,12 @@ sync:
 
 ```bash
 cd web && npm run build          # 产物落到 web/dist，被 go:embed 打包
-cd .. && GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o asset-mgr-linux .
+cd .. && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o asset-mgr-linux .
 ```
+
+**这条命令必须和 `scripts/release.py` 里的构建命令逐字一致。** 两处参数一旦分叉，
+Release 上的附件就和线上跑的不是同一个二进制，而且没有任何东西会提示你——
+发版脚本记的 SHA256 只能证明「这个文件是这次构建出来的」，证明不了「它就是线上那个」。
 
 推到服务器：
 
