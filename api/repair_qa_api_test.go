@@ -318,8 +318,9 @@ func TestQARepairPermissionMatrix(t *testing.T) {
 	}
 }
 
-// TestQARepairVisibilityScope 实测可见范围：viewer 只看自己提交、repair_tech 只看派给自己、
-// dept_head 看本部门子树、asset_manager/admin 看全部。
+// TestQARepairVisibilityScope 实测可见范围：viewer 只看自己提交、
+// repair_tech 看派给自己的 + 自己提交的（52d6672 起由 repairScope 同时给出两个维度，
+// RepairScope.Allows 是 OR）、dept_head 看本部门子树、asset_manager/admin 看全部。
 func TestQARepairVisibilityScope(t *testing.T) {
 	h := qaSetup(t)
 	ns := time.Now().UnixNano()
@@ -375,10 +376,14 @@ func TestQARepairVisibilityScope(t *testing.T) {
 	if !contains(bB, idB) || contains(bB, idA) {
 		t.Errorf("❌ viewerB 应只见自己的 B 单")
 	}
-	// repair_tech 只见派给自己的 B
+	// repair_tech 只见 B。
+	// 放宽后他的 scope = {AssigneeEmpID: empID, ReporterEmpID: empID}（OR）：B 命中「派给我」，
+	// A 既不是他报修的（报修人 viewerA）也没派给他（未派工），故两条断言都不变——
+	// 本用例的 A/B 里没有「tech 自己报修」的单，新维度在这里是隐性的，
+	// 显性的那条由 TestQARepairTechVisibleNotActionable 覆盖。
 	_, _, bT := h.do("GET", "/api/repairs", tech, nil)
 	if !contains(bT, idB) || contains(bT, idA) {
-		t.Errorf("❌ repair_tech 应只见派给自己的 B 单")
+		t.Errorf("❌ repair_tech 应只见派给自己的 B 单（A=%v B=%v）", contains(bT, idA), contains(bT, idB))
 	}
 	// asset_manager 见 A+B
 	_, _, bM := h.do("GET", "/api/repairs", mgr, nil)
@@ -406,6 +411,92 @@ func TestQARepairVisibilityScope(t *testing.T) {
 	_, _, bMine := h.do("GET", "/api/repairs?mine=1", viewerA, nil)
 	if !contains(bMine, idA) || contains(bMine, idB) {
 		t.Errorf("❌ mine=1 应只见自己提交的单")
+	}
+}
+
+// TestQARepairTechVisibleNotActionable 锁住「可见 ≠ 可操作」。
+//
+// 52d6672 把维修工的可见范围从「只派给我的」放宽为「派给我的 OR 我报修的」，
+// 于是会出现一种新单据：维修工是**报修人**、但**派给了别人**。这类单他必须看得见
+// （否则自己提交的单会从眼前消失），却绝不能接单 / 报完工——那是被指派人的活。
+// 少了这个用例，可见范围的放宽就可能被误读成操作权限的放宽（越权洞）。
+//
+// 记录这类单只能直接写库：维修工只有 PermRepairHandle，没有 PermRepairReport，
+// 走 API 建不出「自己报修」的单（真实场景来自角色变更：以 viewer 身份报修后被改成维修工）。
+func TestQARepairTechVisibleNotActionable(t *testing.T) {
+	h := qaSetup(t)
+	ns := time.Now().UnixNano()
+
+	techEmp := h.newEmployee("QA维修工-可见不可操作")
+	otherEmp := h.newEmployee("QA维修工-真正被指派")
+	techUID := h.newUser(fmt.Sprintf("qa-tech-%d", ns), model.RoleRepairTech, techEmp, 0)
+	tech := h.token(model.User{ID: techUID, Username: "qt", RealName: "QA-T", Role: model.RoleRepairTech, EmployeeID: techEmp})
+
+	// 直接写库造单：字段与 store/dashboard_test.go 的探针单保持一致。
+	newOrder := func(cardID, reporterEmp, assigneeEmp int64) int64 {
+		h.t.Helper()
+		var assetCode, assetName string
+		if err := h.st.DB().QueryRow("SELECT asset_code, name FROM asset_card WHERE id=?", cardID).
+			Scan(&assetCode, &assetName); err != nil {
+			h.t.Fatalf("读探针卡失败: %v", err)
+		}
+		res, err := h.st.DB().Exec(`INSERT INTO repair_order
+			(card_id, asset_code, asset_name, reporter_emp_id, reporter_name, use_dept_id, use_dept_name,
+			 fault_desc, urgency, status, assignee_emp_id, assignee_name, created_by)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'normal', ?, ?, ?, 'qa')`,
+			cardID, assetCode, assetName, reporterEmp, "QA 报修人", 0, "",
+			"QA 可见不可操作探针", model.RepairDispatched, assigneeEmp, "QA 被指派人")
+		if err != nil {
+			h.t.Fatalf("建探针维修单失败: %v", err)
+		}
+		oid, _ := res.LastInsertId()
+		// 探针数据清理（先于 newCard 的清理执行：t.Cleanup 是 LIFO）
+		h.t.Cleanup(func() {
+			h.st.DB().Exec("DELETE FROM doc_status_log WHERE doc_type=? AND doc_id=?", model.DocTypeRepair, oid)
+			h.st.DB().Exec("DELETE FROM repair_attachment WHERE repair_id=?", oid)
+			h.st.DB().Exec("DELETE FROM repair_order WHERE id=?", oid)
+		})
+		return oid
+	}
+
+	// ① 他是报修人、派给别人 → 放宽后看得见，但动不了
+	cardOther := h.newCard(fmt.Sprintf("QA-REPAIR-TECH-OTHER-%d", ns), 0)
+	notMine := newOrder(cardOther, techEmp, otherEmp)
+
+	if c, _, _ := h.do("GET", fmt.Sprintf("/api/repairs/%d", notMine), tech, nil); c != 200 {
+		t.Errorf("❌ 维修工看自己报修的单应 200（52d6672 放宽后可见），实际 %d", c)
+	} else {
+		t.Logf("✓ 维修工 GET /api/repairs/%d → 200（看得见自己报修的单）", notMine)
+	}
+	if c, _, _ := h.do("POST", fmt.Sprintf("/api/repairs/%d/take", notMine), tech, nil); c != 403 {
+		t.Errorf("❌ 维修工接「不是派给自己的」单应 403（isRepairAssignee 拦下），实际 %d", c)
+	} else {
+		t.Logf("✓ 维修工 POST /api/repairs/%d/take → 403（看得见但接不了）", notMine)
+	}
+	// 注意：该单 status=dispatched，即便通过了指派人校验，状态机也会给 400（未接单不能报完工）。
+	// 拿到 403 说明拦在更前面的 isRepairAssignee，而不是状态机。
+	if c, _, _ := h.do("POST", fmt.Sprintf("/api/repairs/%d/finish", notMine), tech,
+		map[string]any{"handler_desc": "x"}); c != 403 {
+		t.Errorf("❌ 维修工给「不是派给自己的」单报完工应 403，实际 %d", c)
+	} else {
+		t.Logf("✓ 维修工 POST /api/repairs/%d/finish → 403（看得见但报不了完工）", notMine)
+	}
+
+	// ② 正向对照：派给他的单，同样 dispatched 状态，take 必须 200。
+	// 没有这条就无法区分「403 是被正确拦下」还是「403 是因为单据状态 / 权限位造错了」。
+	cardMine := h.newCard(fmt.Sprintf("QA-REPAIR-TECH-MINE-%d", ns), 0)
+	mine := newOrder(cardMine, otherEmp, techEmp)
+	if c, _, _ := h.do("POST", fmt.Sprintf("/api/repairs/%d/take", mine), tech, nil); c != 200 {
+		t.Errorf("❌ 维修工接「派给自己的」单应 200（正向对照），实际 %d", c)
+	} else {
+		t.Logf("✓ 维修工 POST /api/repairs/%d/take → 200（派给自己的能接）", mine)
+	}
+	// 接单后进入 repairing，报完工也应放行：证明 finish 的 403 不是权限位 / body 解析问题。
+	if c, _, _ := h.do("POST", fmt.Sprintf("/api/repairs/%d/finish", mine), tech,
+		map[string]any{"handler_desc": "更换配件"}); c != 200 {
+		t.Errorf("❌ 维修工给「派给自己的」单报完工应 200（正向对照），实际 %d", c)
+	} else {
+		t.Logf("✓ 维修工 POST /api/repairs/%d/finish → 200（派给自己的能报完工）", mine)
 	}
 }
 
