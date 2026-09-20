@@ -573,3 +573,213 @@ func TestQADisplayStatusViaAPI(t *testing.T) {
 		t.Logf("✓ 导出接口 200，字节数=%d", len(b))
 	}
 }
+
+// newCardWithCategory 建一张挂指定分类的探针卡（需求 A 分类门控用例专用）。
+func (h *qaH) newCardWithCategory(code string, categoryID int64) int64 {
+	h.t.Helper()
+	res, err := h.st.DB().Exec(`INSERT INTO asset_card (asset_code, name, status, biz_status, category_id, created_by)
+		VALUES (?, ?, ?, '', ?, 'qa')`, code, "QA 分类门控探针", model.StatusInUse, categoryID)
+	if err != nil {
+		h.t.Fatalf("建分类探针卡失败: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	h.t.Cleanup(func() {
+		rows, _ := h.st.DB().Query("SELECT id FROM repair_order WHERE card_id=?", id)
+		if rows != nil {
+			var ids []int64
+			for rows.Next() {
+				var oid int64
+				_ = rows.Scan(&oid)
+				ids = append(ids, oid)
+			}
+			rows.Close()
+			for _, oid := range ids {
+				h.st.DB().Exec("DELETE FROM doc_status_log WHERE doc_type=? AND doc_id=?", model.DocTypeRepair, oid)
+				h.st.DB().Exec("DELETE FROM repair_attachment WHERE repair_id=?", oid)
+			}
+		}
+		h.st.DB().Exec("DELETE FROM repair_order WHERE card_id=?", id)
+		h.st.DB().Exec("DELETE FROM asset_history WHERE card_id=?", id)
+		h.st.DB().Exec("DELETE FROM asset_card WHERE id=?", id)
+	})
+	return id
+}
+
+// TestQARepairCategoryGate 需求 A 独立验证：后端分类门控是底线（前端可绕过），
+// 只有「可维修」分类的资产能提交报修；不可维修 / category_id=0 哨兵值一律 400，
+// 且 category_id=0 走 COALESCE 兜底、绝不 500。
+//
+// 前置分类缺失时**必须报错**（迁移被回滚 / backfill 没跑，正是最该报警的场景），
+// 不能 Skip 成绿。
+func TestQARepairCategoryGate(t *testing.T) {
+	h := qaSetup(t)
+
+	var repID, nonRepID int64
+	if err := h.st.DB().QueryRow("SELECT id FROM asset_category WHERE repairable=1 ORDER BY id LIMIT 1").Scan(&repID); err != nil {
+		t.Fatalf("库里无可维修分类（需求 A 前置未就绪：迁移/backfill 可能被回滚）: %v", err)
+	}
+	var nonRepName string
+	if err := h.st.DB().QueryRow("SELECT id, name FROM asset_category WHERE repairable=0 ORDER BY id LIMIT 1").Scan(&nonRepID, &nonRepName); err != nil {
+		t.Fatalf("库里无不可维修分类（需求 A 前置未就绪）: %v", err)
+	}
+
+	viewer := h.token(model.User{ID: 1, Username: "v", RealName: "QA报修人", Role: model.RoleViewer, EmployeeID: 9701})
+	mgr := h.token(model.User{ID: 2, Username: "m", RealName: "QA管理员", Role: model.RoleAssetManager, EmployeeID: 9702})
+	ns := time.Now().UnixNano()
+
+	// ① 可维修分类 → 200
+	cardRep := h.newCardWithCategory(fmt.Sprintf("QA-REPAIR-CAT-REP-%d", ns), repID)
+	if c, m, _ := h.do("POST", "/api/repairs", viewer, map[string]any{"card_id": cardRep, "fault_desc": "可维修分类应放行"}); c != 200 {
+		t.Errorf("❌ 可维修分类报修应 200，实际 %d %s", c, str(m, "error"))
+	} else {
+		t.Logf("✓ 可维修分类 → 200（code=%s）", str(m, "code"))
+	}
+
+	// ② 不可维修分类 → 400，且文案须含**该卡真实分类名**（证明非硬编码文案）
+	cardNon := h.newCardWithCategory(fmt.Sprintf("QA-REPAIR-CAT-NON-%d", ns), nonRepID)
+	c, m, _ := h.do("POST", "/api/repairs", viewer, map[string]any{"card_id": cardNon, "fault_desc": "不可维修分类应被拦"})
+	if c != 400 {
+		t.Errorf("❌ 不可维修分类报修应 400，实际 %d", c)
+	} else {
+		msg := str(m, "error")
+		if !strings.Contains(msg, nonRepName) {
+			t.Errorf("❌ 门控文案应含该卡真实分类名 %q，实际 %q", nonRepName, msg)
+		}
+		t.Logf("✓ 不可维修分类 → 400：%s", msg)
+	}
+
+	// ③ category_id=0 哨兵值 → 400（COALESCE 兜底，绝不 500）；
+	//    文案须含「未设置资产类别」——**不能**用「不支持报修」判，两条文案都含它，会互相掩盖。
+	cardZero := h.newCardWithCategory(fmt.Sprintf("QA-REPAIR-CAT-ZERO-%d", ns), 0)
+	c, m, _ = h.do("POST", "/api/repairs", viewer, map[string]any{"card_id": cardZero, "fault_desc": "哨兵值分类应被拦且不报错"})
+	if c != 400 {
+		t.Errorf("❌ category_id=0 报修应 400（COALESCE 兜底），实际 %d", c)
+	} else {
+		msg := str(m, "error")
+		if !strings.Contains(msg, "未设置资产类别") {
+			t.Errorf("❌ 空分类文案应含「未设置资产类别」，实际 %q", msg)
+		}
+		t.Logf("✓ category_id=0 → 400：%s", msg)
+	}
+
+	// ④ 角色无关：门控在权限校验之后（api/repair.go），凡持 repair.report 的角色
+	//    （viewer 与 asset_manager）对**同一张**不可维修卡都应 400 —— 防将来加角色旁路。
+	//    只测 viewer 发现不了「某角色被旁路」的回归。
+	for _, rc := range []struct {
+		name  string
+		token string
+	}{{"viewer", viewer}, {"asset_manager", mgr}} {
+		if c, m, _ := h.do("POST", "/api/repairs", rc.token, map[string]any{"card_id": cardNon, "fault_desc": "角色无关门控"}); c != 400 {
+			t.Errorf("❌ %s 对不可维修卡报修应 400（门控与角色无关），实际 %d %s", rc.name, c, str(m, "error"))
+		} else {
+			t.Logf("✓ %s 对不可维修卡 → 400", rc.name)
+		}
+	}
+}
+
+// TestQADashboardSixRoles 需求 B 首页：6 角色下 GET /api/dashboard 的渲染与越权检查。
+// 断言：① 6 角色均 200 不崩；② 待办项按角色收敛（员工/维修工拿不到管理向待办）；
+// ③ sync_failed 仅 admin（有 sync.manage）可见；④ 可见条数随 scope 收窄（viewer/dept_head ≤ admin）。
+func TestQADashboardSixRoles(t *testing.T) {
+	h := qaSetup(t)
+	ns := time.Now().UnixNano()
+
+	depts, _ := h.st.ListDepartments()
+	if len(depts) == 0 {
+		t.Skip("库里没有部门，跳过 dept_head 首页验证")
+	}
+	probeDept := depts[0].ID
+
+	// 造一点可见数据：一张归 viewer 名下的卡（user_emp_id=viewer 员工号）+ 一张本部门的卡
+	repCat := h.repairableCategoryID()
+	mkCard := func(code string, userEmp, deptID int64) {
+		if _, err := h.st.DB().Exec(`INSERT INTO asset_card (asset_code, name, status, biz_status, category_id, user_emp_id, use_dept_id, created_by)
+			VALUES (?, ?, ?, '', ?, ?, ?, 'qa')`, code, "QA首页探针", model.StatusInUse, repCat, userEmp, deptID); err != nil {
+			t.Fatalf("建首页探针卡失败: %v", err)
+		}
+		h.t.Cleanup(func() {
+			h.st.DB().Exec("DELETE FROM repair_order WHERE asset_code=?", code)
+			h.st.DB().Exec("DELETE FROM asset_card WHERE asset_code=?", code)
+		})
+	}
+	const viewerEmp = 9801
+	mkCard(fmt.Sprintf("QA-REPAIR-DASH-V-%d", ns), viewerEmp, 0)
+	mkCard(fmt.Sprintf("QA-REPAIR-DASH-D-%d", ns), 0, probeDept)
+
+	admin := h.token(model.User{ID: 1, Username: "a", RealName: "A", Role: model.RoleAdmin, EmployeeID: 9901})
+	mgr := h.token(model.User{ID: 2, Username: "m", RealName: "M", Role: model.RoleAssetManager, EmployeeID: 9902})
+	counter := h.token(model.User{ID: 3, Username: "c", RealName: "C", Role: model.RoleCounter, EmployeeID: 9903})
+	tech := h.token(model.User{ID: 4, Username: "t", RealName: "T", Role: model.RoleRepairTech, EmployeeID: 9904})
+	viewer := h.token(model.User{ID: 5, Username: "v", RealName: "V", Role: model.RoleViewer, EmployeeID: viewerEmp})
+	dhID := h.newUser(fmt.Sprintf("qa-dash-dh-%d", ns), model.RoleDeptHead, 9906, probeDept)
+	deptHead := h.token(model.User{ID: dhID, Username: "dh", RealName: "DH", Role: model.RoleDeptHead, EmployeeID: 9906})
+
+	type roleCase struct {
+		name       string
+		tok        string
+		allowTodo  map[string]bool // 该角色允许出现的待办 key
+		wantSync   bool            // 是否应看到 sync_failed
+	}
+	adminTodos := map[string]bool{"pending": true, "unassigned": true, "confirming": true, "sync_failed": true}
+	cases := []roleCase{
+		{"admin", admin, adminTodos, true},
+		{"asset_manager", mgr, map[string]bool{"pending": true, "unassigned": true, "confirming": true}, false},
+		{"counter", counter, map[string]bool{"count_pending": true, "confirming": true}, false},
+		{"repair_tech", tech, map[string]bool{"to_take": true, "repairing": true}, false},
+		{"viewer", viewer, map[string]bool{"confirming": true, "in_progress": true}, false},
+		{"dept_head", deptHead, map[string]bool{"pending": true}, false},
+	}
+
+	type dashResp struct {
+		Todo []struct {
+			Key   string `json:"key"`
+			Count int64  `json:"count"`
+		} `json:"todo"`
+		Overview struct {
+			AssetTotal int64 `json:"asset_total"`
+		} `json:"overview"`
+	}
+	total := map[string]int64{}
+	for _, rc := range cases {
+		code, _, body := h.do("GET", "/api/dashboard", rc.tok, nil)
+		if code != 200 {
+			t.Errorf("❌ %s 访问 /api/dashboard 应 200，实际 %d", rc.name, code)
+			continue
+		}
+		var d dashResp
+		if err := json.Unmarshal(body, &d); err != nil {
+			t.Errorf("❌ %s 解析 dashboard 失败: %v", rc.name, err)
+			continue
+		}
+		total[rc.name] = d.Overview.AssetTotal
+		sawSync := false
+		for _, td := range d.Todo {
+			if !rc.allowTodo[td.Key] {
+				t.Errorf("❌ %s 越权拿到不该有的待办项 %q（count=%d）", rc.name, td.Key, td.Count)
+			}
+			if td.Key == "sync_failed" {
+				sawSync = true
+			}
+		}
+		if sawSync != rc.wantSync {
+			t.Errorf("❌ %s 的 sync_failed 可见性错误：want=%v got=%v", rc.name, rc.wantSync, sawSync)
+		}
+		t.Logf("✓ %s：asset_total=%d todo=%d 项 sync_failed=%v", rc.name, d.Overview.AssetTotal, len(d.Todo), sawSync)
+	}
+
+	// 可见条数随 scope 收窄
+	if total["admin"] > 0 {
+		if total["viewer"] > total["admin"] {
+			t.Errorf("❌ viewer 资产数(%d)不应超过 admin(%d)", total["viewer"], total["admin"])
+		}
+		if total["dept_head"] > total["admin"] {
+			t.Errorf("❌ dept_head 资产数(%d)不应超过 admin(%d)", total["dept_head"], total["admin"])
+		}
+		t.Logf("可见条数：admin=%d asset_manager=%d dept_head=%d viewer=%d repair_tech=%d counter=%d",
+			total["admin"], total["asset_manager"], total["dept_head"], total["viewer"], total["repair_tech"], total["counter"])
+	}
+	// viewer 必须能看到自己名下刚造的那张卡（scope 生效的正向证据）
+	if total["viewer"] < 1 {
+		t.Errorf("❌ viewer 资产数应 ≥1（已造其名下探针卡），实际 %d", total["viewer"])
+	}
+}

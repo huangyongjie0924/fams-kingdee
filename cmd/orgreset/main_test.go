@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"asset-mgr/config"
 )
@@ -102,14 +103,31 @@ func testDB(t *testing.T) *sql.DB {
 func TestInspectSplitsVisibleAndSoftDeletedCards(t *testing.T) {
 	db := testDB(t)
 
-	var total int
-	if err := db.QueryRow("SELECT COUNT(*) FROM asset_card").Scan(&total); err != nil {
-		t.Fatalf("统计 asset_card 失败: %v", err)
-	}
-
-	r, err := inspect(db)
-	if err != nil {
-		t.Fatalf("体检失败: %v", err)
+	// 快照一致性：本用例连的是共享库，`go test ./...` 会并行跑其它包，它们会建/删探针卡。
+	// 「总数」与 inspect 的分项若落在不同快照上，会算出「可见+软删 ≠ 总数」的假红
+	// （实测：总数读 204、inspect 读到 203，差值恰是并发包刚删掉的探针卡）。
+	// 故先取到「inspect 前后总数不变」的静止快照再断言；若共享库持续被写入则跳过，不误报。
+	var total, totalAfter int
+	var r *refReport
+	for attempt := 0; ; attempt++ {
+		if err := db.QueryRow("SELECT COUNT(*) FROM asset_card").Scan(&total); err != nil {
+			t.Fatalf("统计 asset_card 失败: %v", err)
+		}
+		rep, err := inspect(db)
+		if err != nil {
+			t.Fatalf("体检失败: %v", err)
+		}
+		r = rep
+		if err := db.QueryRow("SELECT COUNT(*) FROM asset_card").Scan(&totalAfter); err != nil {
+			t.Fatalf("统计 asset_card 失败: %v", err)
+		}
+		if total == totalAfter {
+			break
+		}
+		if attempt >= 5 {
+			t.Skipf("共享库持续被并发写入（总数 %d→%d），跳过快照断言", total, totalAfter)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	if r.Cards+r.SoftDeletedCards != total {
