@@ -98,7 +98,7 @@ func denyOutOfScope(w http.ResponseWriter, c *model.AssetCard, sc model.AssetSco
 // repairScope 把登录用户翻译成维修单可见范围，写权限无关——只回答「能看见哪些行」。
 //
 // 与 assetScope 同一套约定：读接口不门控，范围限制在数据行上做。
-//   - 维修工：只看指派给自己的单
+//   - 维修工：指派给自己的单 + 自己提交的单
 //   - 员工（viewer / counter）：只看自己提交的单
 //   - 部门主管：本部门及下级部门的单（按单据的使用部门快照收窄）
 //   - admin / asset_manager：不限
@@ -111,7 +111,9 @@ func (s *Server) repairScope(w http.ResponseWriter, r *http.Request) (model.Repa
 			writeErr(w, http.StatusForbidden, "当前账号未绑定员工，无法查看维修单")
 			return model.RepairScope{}, false
 		}
-		return model.RepairScope{AssigneeEmpID: u.EmployeeID}, true
+		// 维修工既看「派给我的」，也看「我报修的」——自己提交的单派给别人后不该从自己眼前消失。
+		// RepairScope.Allows 三个维度是 OR，故同时给两个维度即可。
+		return model.RepairScope{AssigneeEmpID: u.EmployeeID, ReporterEmpID: u.EmployeeID}, true
 
 	case model.RoleViewer, model.RoleCounter:
 		if u.EmployeeID == 0 {
