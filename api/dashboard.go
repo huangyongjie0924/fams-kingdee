@@ -100,14 +100,20 @@ func (s *Server) dashboardTodos(u model.User, repairSc model.RepairScope) ([]mod
 			todos = append(todos, model.DashboardTodo{Key: key, Label: label, Count: count, Link: link, Level: level})
 		}
 	}
-	// addRepair 统计可见范围内命中给定状态的维修单数，命中则入列。
-	addRepair := func(key, label, link, level string, statuses ...string) error {
-		n, err := s.st.CountRepairsByStatuses(statuses, repairSc)
+	// addRepairSc 按**指定**的可见范围统计命中给定状态的维修单数，命中则入列。
+	// 待办文案写「派给我的」时就不能拿账号的完整 scope 数：完整 scope 还含「我报修的」，
+	// 会把派给别人的单算进来，与文案不符。这种情况传一个只含指派维度的 scope 进来。
+	addRepairSc := func(key, label, link, level string, sc model.RepairScope, statuses ...string) error {
+		n, err := s.st.CountRepairsByStatuses(statuses, sc)
 		if err != nil {
 			return err
 		}
 		add(key, label, n, link, level)
 		return nil
+	}
+	// addRepair 用账号的完整范围，适用「本就按可见范围定义」的待办（管理视角、部门主管、员工自己的单）。
+	addRepair := func(key, label, link, level string, statuses ...string) error {
+		return addRepairSc(key, label, link, level, repairSc, statuses...)
 	}
 
 	switch u.Role {
@@ -124,12 +130,15 @@ func (s *Server) dashboardTodos(u model.User, repairSc model.RepairScope) ([]mod
 			return nil, err
 		}
 	case model.RoleRepairTech:
-		// 维修工：repairScope 已收窄到 assignee_emp_id=me，故这里只需按状态数。
+		// 这两项待办说的是「派给我的」，只能按指派维度数：账号 repairScope 现已含
+		// 「我报修的」，用它数会把派给别人的单（我报修、别人接手）也算成我的待办。
+		// 可见范围（列表 / 详情）不受影响，仍走完整 scope。
 		// 待接单是「球在我这、还没动」→ danger；维修中只是进展 → info。
-		if err := addRepair("to_take", "派给我的待接单", "/repairs?status=dispatched", todoLevelDanger, model.RepairDispatched); err != nil {
+		assigneeSc := model.RepairScope{AssigneeEmpID: u.EmployeeID}
+		if err := addRepairSc("to_take", "派给我的待接单", "/repairs?status=dispatched", todoLevelDanger, assigneeSc, model.RepairDispatched); err != nil {
 			return nil, err
 		}
-		if err := addRepair("repairing", "我名下维修中", "/repairs?status=repairing", todoLevelInfo, model.RepairRepairing); err != nil {
+		if err := addRepairSc("repairing", "我名下维修中", "/repairs?status=repairing", todoLevelInfo, assigneeSc, model.RepairRepairing); err != nil {
 			return nil, err
 		}
 	case model.RoleDeptHead:
