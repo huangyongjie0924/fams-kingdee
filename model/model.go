@@ -318,7 +318,9 @@ const (
 	RoleCounter      = "counter"
 	// RoleDeptHead 部门负责人：只看本部门（含下级）资产，只读
 	RoleDeptHead = "dept_head"
-	// RoleRepairTech 维修工：只看指派给自己的维修单，接单 / 报完工
+	// RoleRepairTech 维修工：看指派给自己的维修单 + 自己提交的维修单，接单 / 报完工。
+	// 「自己提交的」这一维是为角色变更兜底：员工以 viewer 身份报修后若被改为维修工，
+	// 那些单不该从他眼前消失（见 api/scope.go 的 repairScope）。
 	RoleRepairTech = "repair_tech"
 	RoleViewer     = "viewer"
 )
