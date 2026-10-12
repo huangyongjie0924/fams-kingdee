@@ -273,6 +273,115 @@ func (s *Store) applyBizStatusTx(tx *sql.Tx, cur *model.RepairOrder, to, operato
 	return nil
 }
 
+// RepairDeleteMaxBatch 是一次批量删除维修单的上限。
+//
+// 定这个数的理由：删除是**不可恢复**操作，一次几十张已远超正常纠错场景；上限让「误传一个超大
+// ids 数组」在触库之前就被拒绝，也顺带限制了单事务的行锁范围。
+const RepairDeleteMaxBatch = 100
+
+// DeleteRepairOrders 物理删除若干张**待受理（pending）或已撤单（cancelled）**维修单，
+// 并级联清理全部从属行。
+//
+// 为什么只允许这两个状态（白名单的唯一真相在 model.RepairDeletableStatuses）：
+//   - 判定标准是「这张单是否还挂着未兑现的外部承诺」。
+//   - pending 从未被受理，云之家侧只有一条给受理人的待办；cancelled 已是终态，撤单时
+//     已跑过同一套整单清理。两者删除时都由 OnRepairDeleted → deliverDeleteAll 收尾。
+//   - 一旦受理 / 派工，云之家侧已经把待办推给了受理人或维护人员，删掉本地行会让那些待办
+//     指向一个不存在的单据（深链 404）—— 所以 accepted / dispatched 刻意不放行。
+//   - 两者都**从未写过 asset_card.biz_status**：该列只有进出 repairing 时才写，而 cancel
+//     只能来自 pending / accepted / dispatched（见 repairTransitions），永远不来自 repairing。
+//     故删除无需回滚资产卡状态。（若将来放开「维修中撤单」，这条前提就破了，必须一并处理。）
+//
+// 为什么必须「锁行校验 + 删除」放在同一个事务：ids 来自请求体，校验与删除之间若有窗口，单据
+// 可能在那一瞬被受理（TOCTOU）。这里对每张单 SELECT ... FOR UPDATE，校验与删除同事务。
+//
+// 级联范围（这三张表**没有外键约束**，漏删就是静默的孤儿行 —— 不变量见
+// store/repair_qa_store_test.go 的 TestQADataHygiene）：
+//   - doc_status_log    (doc_type='repair', doc_id)
+//   - repair_attachment (repair_id)
+//   - repair_notify_task(repair_id)
+//
+// 返回被删单据（供调用方清理云之家待办 + 记审计日志）。**任一条不满足条件即整体回滚、一条都不
+// 删**，并返回可读错误（含单号与当前状态）——「删了一半」是这里最坏的失败形态。
+func (s *Store) DeleteRepairOrders(ids []int64) ([]*model.RepairOrder, error) {
+	uniq, err := normalizeRepairIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// 1) 锁行 + 校验状态。逐条查而不是 IN(...)：要能说出「哪一张、什么状态」。
+	orders := make([]*model.RepairOrder, 0, len(uniq))
+	for _, id := range uniq {
+		row := tx.QueryRow(repairOrderSelect+" WHERE id = ? FOR UPDATE", id)
+		o, err := scanRepairOrder(row)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("维修单 id=%d 不存在（可能已被他人删除）", id)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("查询维修单 id=%d: %w", id, err)
+		}
+		if !model.IsRepairDeletable(o.Status) {
+			return nil, fmt.Errorf("维修单 %s 当前状态是「%s」，只有「%s」的单可以删除",
+				o.Code, model.RepairStatusLabel(o.Status), model.RepairDeletableLabel())
+		}
+		orders = append(orders, o)
+	}
+
+	// 2) 先删从属行、再删主表。反过来一旦中途失败，就会留下「主表没了、从属还在」的孤儿行。
+	for _, o := range orders {
+		if _, err := tx.Exec(`DELETE FROM repair_attachment WHERE repair_id = ?`, o.ID); err != nil {
+			return nil, fmt.Errorf("清理维修单 %s 的附件失败: %w", o.Code, err)
+		}
+		if _, err := tx.Exec(`DELETE FROM doc_status_log WHERE doc_type = ? AND doc_id = ?`,
+			model.DocTypeRepair, o.ID); err != nil {
+			return nil, fmt.Errorf("清理维修单 %s 的流转记录失败: %w", o.Code, err)
+		}
+		if _, err := tx.Exec(`DELETE FROM repair_notify_task WHERE repair_id = ?`, o.ID); err != nil {
+			return nil, fmt.Errorf("清理维修单 %s 的待办任务失败: %w", o.Code, err)
+		}
+		if _, err := tx.Exec(`DELETE FROM repair_order WHERE id = ?`, o.ID); err != nil {
+			return nil, fmt.Errorf("删除维修单 %s 失败: %w", o.Code, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+// normalizeRepairIDs 去重 + 过滤非正值 + 校验批量上限，保持传入顺序。
+//
+// 去重是必需的：重复 id 会让上层「删了几张」的计数与实际不符（第二遍 DELETE 影响 0 行，
+// 但校验阶段仍会读到同一张单）。
+func normalizeRepairIDs(ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("未选择任何维修单")
+	}
+	if len(ids) > RepairDeleteMaxBatch {
+		return nil, fmt.Errorf("一次最多删除 %d 张维修单，当前请求 %d 张",
+			RepairDeleteMaxBatch, len(ids))
+	}
+	seen := make(map[int64]bool, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, fmt.Errorf("维修单 id 非法：%d", id)
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 // GetRepair 按 id 取单张维修单，不存在返回 nil, nil。
 func (s *Store) GetRepair(id int64) (*model.RepairOrder, error) {
 	row := s.db.QueryRow(repairOrderSelect+" WHERE id = ?", id)
@@ -366,6 +475,46 @@ func (s *Store) ReconcileBizStatus() (int, error) {
 	}
 	nSet, _ := set.RowsAffected()
 	return int(nClear + nSet), nil
+}
+
+// ListOpenRepairCardIDs 返回「当前有**未到终态**维修单」的资产 id 去重集合。
+//
+// 口径（2026-09-24 员工可见范围第三维）：**全公司**口径，**不限报修人**——任何人的报修单，
+// 只要还没结单，其 card_id 就进入集合。只给 employee 角色用（见 api/scope.go）。
+// 不限报修人的理由：员工报修入口本身受资产可见范围门控，员工只能对自己看得见的资产报修，
+// 故「只看我报修的」等价于现状。
+//
+// 「未到终态」= status NOT IN (done, rejected, cancelled)，即 model.RepairTerminalStatuses；
+// 状态值一律走占位符绑定，绝不拼进 SQL 字符串。
+//
+// card_id > 0 是必须的：card_id 是 NOT NULL 但 0 是「未设置」哨兵值（本项目惯例），
+// 不能把 0 带进调用方的 `c.id IN (...)`（否则会误命中 id=0 的伪行，且污染结果集）。
+//
+// 无行时返回空 slice + nil error。未加额外索引，依赖既有 idx_repair_card；
+// repair_order 只增不删（单据靠终态归档），但**未结单**的数量受运营现实约束，
+// 不是全表历史——故本查询在正常运营下是轻量的。
+func (s *Store) ListOpenRepairCardIDs() ([]int64, error) {
+	args := make([]any, 0, len(model.RepairTerminalStatuses))
+	for _, st := range model.RepairTerminalStatuses {
+		args = append(args, st)
+	}
+	q := "SELECT DISTINCT card_id FROM repair_order WHERE card_id > 0 AND status NOT IN (" +
+		placeholders(len(model.RepairTerminalStatuses)) + ")"
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list open repair card ids: %w", err)
+	}
+	defer rows.Close()
+
+	out := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // VendorName 取供应商名称用于派工快照，查不到返回空串（不报错）。

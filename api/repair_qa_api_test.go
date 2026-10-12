@@ -30,14 +30,7 @@ type qaH struct {
 
 func qaSetup(t *testing.T) *qaH {
 	t.Helper()
-	cfg, err := config.Load(filepath.Join("..", "config.yaml"))
-	if err != nil {
-		t.Skipf("读不到 config.yaml，跳过 API 集成测试: %v", err)
-	}
-	st, err := store.New(cfg.DSN())
-	if err != nil {
-		t.Fatalf("连接数据库失败: %v", err)
-	}
+	st, cfg := mustTestStore(t)
 	srv := NewServer(st, cfg)
 	mux := http.NewServeMux()
 	srv.Routes(mux)
@@ -137,7 +130,8 @@ func (h *qaH) newEmployee(name string) int64 {
 
 func (h *qaH) newUser(username, role string, empID, deptID int64) int64 {
 	h.t.Helper()
-	id, err := h.st.CreateUser(username, "qa-pass-123", "QA-"+username, role, empID, deptID, true)
+	// CreateUser 现按角色集合写入（一人可多角色）；单角色探针账号包成单元素集合。
+	id, err := h.st.CreateUser(username, "qa-pass-123", "QA-"+username, []string{role}, empID, deptID, true)
 	if err != nil {
 		h.t.Fatalf("建探针账号失败: %v", err)
 	}
@@ -152,11 +146,11 @@ func TestQARepairAPIEndToEnd(t *testing.T) {
 	h := qaSetup(t)
 	ns := time.Now().UnixNano()
 	cardID := h.newCard(fmt.Sprintf("QA-REPAIR-E2E-%d", ns), 0)
-	empID := h.newEmployee("QA维修工-端到端")
+	empID := h.newEmployee("QA维护人员-端到端")
 
-	viewer := h.token(model.User{ID: 1, Username: "qa-viewer", RealName: "QA报修人", Role: model.RoleViewer, EmployeeID: 9101})
+	viewer := h.token(model.User{ID: 1, Username: "qa-viewer", RealName: "QA报修人", Role: model.RoleEmployee, EmployeeID: 9101})
 	mgr := h.token(model.User{ID: 2, Username: "qa-mgr", RealName: "QA管理员", Role: model.RoleAssetManager, EmployeeID: 9102})
-	tech := h.token(model.User{ID: 3, Username: "qa-tech", RealName: "QA维修工", Role: model.RoleRepairTech, EmployeeID: empID})
+	tech := h.token(model.User{ID: 3, Username: "qa-tech", RealName: "QA维护人员", Role: model.RoleMaintainer, EmployeeID: empID})
 
 	// —— 决策 1：viewer 授予 repair.report，可提交报修 ——
 	code, m, _ := h.do("POST", "/api/repairs", viewer, map[string]any{"card_id": cardID, "fault_desc": "空调不制冷", "urgency": "high"})
@@ -274,10 +268,10 @@ func TestQARepairPermissionMatrix(t *testing.T) {
 	h := qaSetup(t)
 	ns := time.Now().UnixNano()
 	cardID := h.newCard(fmt.Sprintf("QA-REPAIR-PERM-%d", ns), 0)
-	empID := h.newEmployee("QA维修工-权限")
+	empID := h.newEmployee("QA维护人员-权限")
 
-	viewer := h.token(model.User{ID: 1, Username: "v", RealName: "V", Role: model.RoleViewer, EmployeeID: 9201})
-	tech := h.token(model.User{ID: 2, Username: "t", RealName: "T", Role: model.RoleRepairTech, EmployeeID: empID})
+	viewer := h.token(model.User{ID: 1, Username: "v", RealName: "V", Role: model.RoleEmployee, EmployeeID: 9201})
+	tech := h.token(model.User{ID: 2, Username: "t", RealName: "T", Role: model.RoleMaintainer, EmployeeID: empID})
 	mgr := h.token(model.User{ID: 3, Username: "m", RealName: "M", Role: model.RoleAssetManager, EmployeeID: 9203})
 	admin := h.token(model.User{ID: 4, Username: "a", RealName: "A", Role: model.RoleAdmin, EmployeeID: 9204})
 	deptHead := h.token(model.User{ID: 5, Username: "d", RealName: "D", Role: model.RoleDeptHead, EmployeeID: 9205})
@@ -332,12 +326,12 @@ func TestQARepairVisibilityScope(t *testing.T) {
 	probeDept := depts[0].ID
 
 	cardA := h.newCard(fmt.Sprintf("QA-REPAIR-SCOPE-A-%d", ns), probeDept) // 属 probeDept
-	cardB := h.newCard(fmt.Sprintf("QA-REPAIR-SCOPE-B-%d", ns), 0)        // 不属 probeDept
-	empID := h.newEmployee("QA维修工-范围")
+	cardB := h.newCard(fmt.Sprintf("QA-REPAIR-SCOPE-B-%d", ns), 0)         // 不属 probeDept
+	empID := h.newEmployee("QA维护人员-范围")
 
-	viewerA := h.token(model.User{ID: 1, Username: "va", RealName: "VA", Role: model.RoleViewer, EmployeeID: 9301})
-	viewerB := h.token(model.User{ID: 2, Username: "vb", RealName: "VB", Role: model.RoleViewer, EmployeeID: 9302})
-	tech := h.token(model.User{ID: 3, Username: "t", RealName: "T", Role: model.RoleRepairTech, EmployeeID: empID})
+	viewerA := h.token(model.User{ID: 1, Username: "va", RealName: "VA", Role: model.RoleEmployee, EmployeeID: 9301})
+	viewerB := h.token(model.User{ID: 2, Username: "vb", RealName: "VB", Role: model.RoleEmployee, EmployeeID: 9302})
+	tech := h.token(model.User{ID: 3, Username: "t", RealName: "T", Role: model.RoleMaintainer, EmployeeID: empID})
 	mgr := h.token(model.User{ID: 4, Username: "m", RealName: "M", Role: model.RoleAssetManager, EmployeeID: 9304})
 	admin := h.token(model.User{ID: 5, Username: "a", RealName: "A", Role: model.RoleAdmin, EmployeeID: 9305})
 
@@ -416,21 +410,21 @@ func TestQARepairVisibilityScope(t *testing.T) {
 
 // TestQARepairTechVisibleNotActionable 锁住「可见 ≠ 可操作」。
 //
-// 52d6672 把维修工的可见范围从「只派给我的」放宽为「派给我的 OR 我报修的」，
-// 于是会出现一种新单据：维修工是**报修人**、但**派给了别人**。这类单他必须看得见
+// 52d6672 把维护人员的可见范围从「只派给我的」放宽为「派给我的 OR 我报修的」，
+// 于是会出现一种新单据：维护人员是**报修人**、但**派给了别人**。这类单他必须看得见
 // （否则自己提交的单会从眼前消失），却绝不能接单 / 报完工——那是被指派人的活。
 // 少了这个用例，可见范围的放宽就可能被误读成操作权限的放宽（越权洞）。
 //
-// 记录这类单只能直接写库：维修工只有 PermRepairHandle，没有 PermRepairReport，
-// 走 API 建不出「自己报修」的单（真实场景来自角色变更：以 viewer 身份报修后被改成维修工）。
+// 记录这类单只能直接写库：维护人员只有 PermRepairHandle，没有 PermRepairReport，
+// 走 API 建不出「自己报修」的单（真实场景来自角色变更：以 viewer 身份报修后被改成维护人员）。
 func TestQARepairTechVisibleNotActionable(t *testing.T) {
 	h := qaSetup(t)
 	ns := time.Now().UnixNano()
 
-	techEmp := h.newEmployee("QA维修工-可见不可操作")
-	otherEmp := h.newEmployee("QA维修工-真正被指派")
-	techUID := h.newUser(fmt.Sprintf("qa-tech-%d", ns), model.RoleRepairTech, techEmp, 0)
-	tech := h.token(model.User{ID: techUID, Username: "qt", RealName: "QA-T", Role: model.RoleRepairTech, EmployeeID: techEmp})
+	techEmp := h.newEmployee("QA维护人员-可见不可操作")
+	otherEmp := h.newEmployee("QA维护人员-真正被指派")
+	techUID := h.newUser(fmt.Sprintf("qa-tech-%d", ns), model.RoleMaintainer, techEmp, 0)
+	tech := h.token(model.User{ID: techUID, Username: "qt", RealName: "QA-T", Role: model.RoleMaintainer, EmployeeID: techEmp})
 
 	// 直接写库造单：字段与 store/dashboard_test.go 的探针单保持一致。
 	newOrder := func(cardID, reporterEmp, assigneeEmp int64) int64 {
@@ -464,22 +458,22 @@ func TestQARepairTechVisibleNotActionable(t *testing.T) {
 	notMine := newOrder(cardOther, techEmp, otherEmp)
 
 	if c, _, _ := h.do("GET", fmt.Sprintf("/api/repairs/%d", notMine), tech, nil); c != 200 {
-		t.Errorf("❌ 维修工看自己报修的单应 200（52d6672 放宽后可见），实际 %d", c)
+		t.Errorf("❌ 维护人员看自己报修的单应 200（52d6672 放宽后可见），实际 %d", c)
 	} else {
-		t.Logf("✓ 维修工 GET /api/repairs/%d → 200（看得见自己报修的单）", notMine)
+		t.Logf("✓ 维护人员 GET /api/repairs/%d → 200（看得见自己报修的单）", notMine)
 	}
 	if c, _, _ := h.do("POST", fmt.Sprintf("/api/repairs/%d/take", notMine), tech, nil); c != 403 {
-		t.Errorf("❌ 维修工接「不是派给自己的」单应 403（isRepairAssignee 拦下），实际 %d", c)
+		t.Errorf("❌ 维护人员接「不是派给自己的」单应 403（isRepairAssignee 拦下），实际 %d", c)
 	} else {
-		t.Logf("✓ 维修工 POST /api/repairs/%d/take → 403（看得见但接不了）", notMine)
+		t.Logf("✓ 维护人员 POST /api/repairs/%d/take → 403（看得见但接不了）", notMine)
 	}
 	// 注意：该单 status=dispatched，即便通过了指派人校验，状态机也会给 400（未接单不能报完工）。
 	// 拿到 403 说明拦在更前面的 isRepairAssignee，而不是状态机。
 	if c, _, _ := h.do("POST", fmt.Sprintf("/api/repairs/%d/finish", notMine), tech,
 		map[string]any{"handler_desc": "x"}); c != 403 {
-		t.Errorf("❌ 维修工给「不是派给自己的」单报完工应 403，实际 %d", c)
+		t.Errorf("❌ 维护人员给「不是派给自己的」单报完工应 403，实际 %d", c)
 	} else {
-		t.Logf("✓ 维修工 POST /api/repairs/%d/finish → 403（看得见但报不了完工）", notMine)
+		t.Logf("✓ 维护人员 POST /api/repairs/%d/finish → 403（看得见但报不了完工）", notMine)
 	}
 
 	// ② 正向对照：派给他的单，同样 dispatched 状态，take 必须 200。
@@ -487,16 +481,16 @@ func TestQARepairTechVisibleNotActionable(t *testing.T) {
 	cardMine := h.newCard(fmt.Sprintf("QA-REPAIR-TECH-MINE-%d", ns), 0)
 	mine := newOrder(cardMine, otherEmp, techEmp)
 	if c, _, _ := h.do("POST", fmt.Sprintf("/api/repairs/%d/take", mine), tech, nil); c != 200 {
-		t.Errorf("❌ 维修工接「派给自己的」单应 200（正向对照），实际 %d", c)
+		t.Errorf("❌ 维护人员接「派给自己的」单应 200（正向对照），实际 %d", c)
 	} else {
-		t.Logf("✓ 维修工 POST /api/repairs/%d/take → 200（派给自己的能接）", mine)
+		t.Logf("✓ 维护人员 POST /api/repairs/%d/take → 200（派给自己的能接）", mine)
 	}
 	// 接单后进入 repairing，报完工也应放行：证明 finish 的 403 不是权限位 / body 解析问题。
 	if c, _, _ := h.do("POST", fmt.Sprintf("/api/repairs/%d/finish", mine), tech,
 		map[string]any{"handler_desc": "更换配件"}); c != 200 {
-		t.Errorf("❌ 维修工给「派给自己的」单报完工应 200（正向对照），实际 %d", c)
+		t.Errorf("❌ 维护人员给「派给自己的」单报完工应 200（正向对照），实际 %d", c)
 	} else {
-		t.Logf("✓ 维修工 POST /api/repairs/%d/finish → 200（派给自己的能报完工）", mine)
+		t.Logf("✓ 维护人员 POST /api/repairs/%d/finish → 200（派给自己的能报完工）", mine)
 	}
 }
 
@@ -507,8 +501,8 @@ func TestQARepairUploadIDOR(t *testing.T) {
 	cardA := h.newCard(fmt.Sprintf("QA-REPAIR-UP-A-%d", ns), 0)
 	cardB := h.newCard(fmt.Sprintf("QA-REPAIR-UP-B-%d", ns), 0)
 
-	viewerA := h.token(model.User{ID: 1, Username: "va", RealName: "QA-A", Role: model.RoleViewer, EmployeeID: 9401})
-	viewerB := h.token(model.User{ID: 2, Username: "vb", RealName: "QA-B", Role: model.RoleViewer, EmployeeID: 9402})
+	viewerA := h.token(model.User{ID: 1, Username: "va", RealName: "QA-A", Role: model.RoleEmployee, EmployeeID: 9401})
+	viewerB := h.token(model.User{ID: 2, Username: "vb", RealName: "QA-B", Role: model.RoleEmployee, EmployeeID: 9402})
 	mgr := h.token(model.User{ID: 3, Username: "m", RealName: "QA-M", Role: model.RoleAssetManager, EmployeeID: 9403})
 
 	_, mA, _ := h.do("POST", "/api/repairs", viewerA, map[string]any{"card_id": cardA, "fault_desc": "A 的单"})
@@ -714,7 +708,7 @@ func TestQARepairCategoryGate(t *testing.T) {
 		t.Fatalf("库里无不可维修分类（需求 A 前置未就绪）: %v", err)
 	}
 
-	viewer := h.token(model.User{ID: 1, Username: "v", RealName: "QA报修人", Role: model.RoleViewer, EmployeeID: 9701})
+	viewer := h.token(model.User{ID: 1, Username: "v", RealName: "QA报修人", Role: model.RoleEmployee, EmployeeID: 9701})
 	mgr := h.token(model.User{ID: 2, Username: "m", RealName: "QA管理员", Role: model.RoleAssetManager, EmployeeID: 9702})
 	ns := time.Now().UnixNano()
 
@@ -769,7 +763,7 @@ func TestQARepairCategoryGate(t *testing.T) {
 }
 
 // TestQADashboardSixRoles 需求 B 首页：6 角色下 GET /api/dashboard 的渲染与越权检查。
-// 断言：① 6 角色均 200 不崩；② 待办项按角色收敛（员工/维修工拿不到管理向待办）；
+// 断言：① 6 角色均 200 不崩；② 待办项按角色收敛（员工/维护人员拿不到管理向待办）；
 // ③ sync_failed 仅 admin（有 sync.manage）可见；④ 可见条数随 scope 收窄（viewer/dept_head ≤ admin）。
 func TestQADashboardSixRoles(t *testing.T) {
 	h := qaSetup(t)
@@ -800,16 +794,16 @@ func TestQADashboardSixRoles(t *testing.T) {
 	admin := h.token(model.User{ID: 1, Username: "a", RealName: "A", Role: model.RoleAdmin, EmployeeID: 9901})
 	mgr := h.token(model.User{ID: 2, Username: "m", RealName: "M", Role: model.RoleAssetManager, EmployeeID: 9902})
 	counter := h.token(model.User{ID: 3, Username: "c", RealName: "C", Role: model.RoleCounter, EmployeeID: 9903})
-	tech := h.token(model.User{ID: 4, Username: "t", RealName: "T", Role: model.RoleRepairTech, EmployeeID: 9904})
-	viewer := h.token(model.User{ID: 5, Username: "v", RealName: "V", Role: model.RoleViewer, EmployeeID: viewerEmp})
+	tech := h.token(model.User{ID: 4, Username: "t", RealName: "T", Role: model.RoleMaintainer, EmployeeID: 9904})
+	viewer := h.token(model.User{ID: 5, Username: "v", RealName: "V", Role: model.RoleEmployee, EmployeeID: viewerEmp})
 	dhID := h.newUser(fmt.Sprintf("qa-dash-dh-%d", ns), model.RoleDeptHead, 9906, probeDept)
 	deptHead := h.token(model.User{ID: dhID, Username: "dh", RealName: "DH", Role: model.RoleDeptHead, EmployeeID: 9906})
 
 	type roleCase struct {
-		name       string
-		tok        string
-		allowTodo  map[string]bool // 该角色允许出现的待办 key
-		wantSync   bool            // 是否应看到 sync_failed
+		name      string
+		tok       string
+		allowTodo map[string]bool // 该角色允许出现的待办 key
+		wantSync  bool            // 是否应看到 sync_failed
 	}
 	adminTodos := map[string]bool{"pending": true, "unassigned": true, "confirming": true, "sync_failed": true}
 	cases := []roleCase{

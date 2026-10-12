@@ -32,7 +32,7 @@ func TestBizStatusNotInOwnedColumnLists(t *testing.T) {
 }
 
 // TestEffectiveStatus 守住有效状态的优先级：biz_status 非空取它，否则回落 status。
-// 与 buildWhere / sortColumns 里的 COALESCE(NULLIF(biz_status,''), status) 是同一套口径。
+// 与 buildWhere / sortColumns 里的 COALESCE(NULLIF(biz_status,”), status) 是同一套口径。
 func TestEffectiveStatus(t *testing.T) {
 	cases := []struct{ biz, status, want string }{
 		{"维修中", "在用", "维修中"}, // 本地状态优先
@@ -114,7 +114,7 @@ func TestRepairScopeAllows(t *testing.T) {
 		t.Error("报修人应看得见自己提交的单")
 	}
 	if !(model.RepairScope{AssigneeEmpID: 20}).Allows(order) {
-		t.Error("被指派维修工应看得见派给自己的单")
+		t.Error("被指派维护人员应看得见派给自己的单")
 	}
 	if !(model.RepairScope{DeptIDs: []int64{30, 31}}).Allows(order) {
 		t.Error("部门主管应看得见本部门子树的单")
@@ -123,7 +123,7 @@ func TestRepairScopeAllows(t *testing.T) {
 		t.Error("非报修人不该看得见")
 	}
 	if (model.RepairScope{AssigneeEmpID: 99}).Allows(order) {
-		t.Error("非指派维修工不该看得见")
+		t.Error("非指派维护人员不该看得见")
 	}
 	if (model.RepairScope{DeptIDs: []int64{99}}).Allows(order) {
 		t.Error("非本部门的单不该看得见")

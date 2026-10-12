@@ -20,7 +20,9 @@ export const ASSET_COLUMNS: ColumnMeta[] = [
   { prop: "serial_no", label: "设备序列号", width: 140, defaultOn: false },
   { prop: "unit", label: "计量单位", width: 90, defaultOn: false },
   { prop: "quantity", label: "数量", width: 110, align: "right", qty: true, defaultOn: true },
-  { prop: "amount", label: "金额", width: 120, align: "right", money: true, defaultOn: true },
+  // 金额列一律默认隐藏（业务要求：台账列表不展示金额）。仍可在「列配置」里手动打开。
+  // ⚠️ 老浏览器里已存的列配置优先于这里的 defaultOn，所以 List.vue 里做了一次 key 迁移。
+  { prop: "amount", label: "金额", width: 120, align: "right", money: true, defaultOn: false },
   { prop: "use_company_name", label: "使用公司", width: 140, defaultOn: true },
   { prop: "use_dept_name", label: "使用部门", width: 140, defaultOn: true },
   { prop: "user_emp_name", label: "使用人", width: 100, defaultOn: true },

@@ -13,6 +13,7 @@ import (
 
 	"asset-mgr/config"
 	"asset-mgr/integration/kingdee"
+	"asset-mgr/integration/yunzhijia"
 	"asset-mgr/model"
 	"asset-mgr/store"
 )
@@ -44,11 +45,26 @@ type Service struct {
 	// 没有它，同编码的多张合并卡会各自与同一份旧数据比对，affected 被重复计数
 	// （实测 2 倍高估）。仅在 dry-run 且持有 mu 的 Run 内使用。
 	dryRunOverlay map[string]*model.AssetCard
+
+	// yzjClient 是云之家通讯录增量同步（openId 回填路径 B）用的客户端，可为 nil。
+	//
+	// 与星瀚的 client 分开持有：通讯录同步是**另一套独立外部源**，其失败不得
+	// 影响星瀚的「组织主数据 → 资产卡」批次（docs/云之家待办通知集成方案.md §6.5）。
+	// nil 时 SyncYunzhijiaOrg 会尝试按配置构造，仍不可用则跳过（见 yunzhijia_org.go）。
+	yzjClient *yunzhijia.Client
 }
 
 // NewService 创建同步服务。调用方应保证 kingdee 配置完整。
 func NewService(st *store.Store, client *kingdee.Client, cfg *config.Config) *Service {
 	return &Service{st: st, client: client, cfg: cfg}
+}
+
+// SetYunzhijiaClient 注入云之家客户端（通讯录增量同步用）。
+//
+// 未注入时 SyncYunzhijiaOrg 会在凭证齐备的情况下按配置自行构造一个；
+// 注入优先。测试通过它注入指向假云之家服务器的客户端。
+func (s *Service) SetYunzhijiaClient(c *yunzhijia.Client) {
+	s.yzjClient = c
 }
 
 // TestConnect 验证金蝶 token 接口连通性。

@@ -1,0 +1,272 @@
+/* ============================================================================
+ * FAMS 设计令牌层（P0）
+ * ----------------------------------------------------------------------------
+ * 引入位置：web/src/main.ts —— 必须排在 ./style.css 之后：
+ *     element-plus/dist/index.css  →  ./style.css  →  ./styles/tokens.css
+ * :root 上同特异性时「后引入者胜出」，只有排到最后才压得住 EP 的默认变量。
+ *
+ * 回滚：删掉 main.ts 里那一行 import 即可（本文件不参与任何业务逻辑）。
+ *
+ * 设计基调：石墨黑 = 结构，信号黄 = 交互反馈，钢灰 = 中性信息层级，语义色 = 状态。
+ * 语义色比 EP 默认值整体压暗（EP 的 #67c23a / #e6a23c / #f56c6c 饱和度过高，
+ * 在白色卡片上刺眼），压暗后在 #fff 上对比度全部 > 4.5:1，可直接用于文字与图标。
+ * ==========================================================================*/
+
+:root {
+  /* ---- 结构色与中性阶 ---- */
+  --ink: #14171b;         /* 结构色 / 主文字 */
+  --ink-2: #1c2127;       /* 悬浮态 */
+  --steel-700: #3d454f;   /* 正文次级   白 9.71 / 纸 9.06 / 表头底 8.57 */
+  --steel-600: #5c6470;   /* 辅助文字   白 5.98 / 纸 5.58 / 表头底 5.27 */
+  --steel-500: #656d79;   /* 说明文字   白 5.23 / 纸 4.88 / 表头底 4.61
+                             ⚠️ 原为 #6b7480，白底 4.74 但纸底仅 4.42、表头底 4.18 ⇒
+                             凡落在 --paper / --steel-100 上的说明文字都不达标。
+                             压到 #656d79 后三种底色全部 ≥4.5，一处修复 15 个调用点。 */
+  --steel-400: #8d959f;   /* 占位符 / 深底文字（深底上 5.93，白底仅 2.85 ⇒ 只许这两处用） */
+  --steel-300: #c3c9d0;   /* 强边框 / 深底文字（深底上 10.77） */
+  --steel-200: #dde1e6;   /* 发丝线 */
+  --steel-100: #eef1f4;   /* 表头 / 条纹 */
+  --paper: #f6f7f9;       /* 页面底色 */
+  --surface: #ffffff;     /* 卡片面 */
+
+  /* ---- 强调色与语义色 ---- */
+  --signal: #f5b301;      /* 交互反馈（唯一强调色） */
+  --signal-d: #cf9700;    /* 黄底上的文字 */
+  --ok: #2f8f4e;          /* 成功 / 在用      图形用（白 4.07 / 表头底 3.59，均 ≥3:1） */
+  --warn: #bd7014;        /* 警告 / 借用      图形用。原 #c9781a 在表头底仅 2.99 ⇒
+                                                 低于图形 3:1 门槛，压暗到 3.37 */
+  --danger: #c0392b;      /* 危险 / 报废      图形+文字（白 5.44） */
+  --info: #5c6470;        /* 中性信息 / 调拨中（白 5.98） */
+
+  /* ---- 类型尺度（9 档收敛为 8 档） ---- */
+  --t-32: 32px;   /* 工作台大数（等宽） */
+  --t-24: 24px;   /* 区块大标题 */
+  --t-20: 20px;   /* 页面标题 */
+  --t-16: 16px;   /* 卡片标题 */
+  --t-14: 14px;   /* 正文基准 */
+  --t-13: 13px;   /* 表格内容、次级信息 */
+  --t-12: 12px;   /* 辅助文字、统计口径、时间 */
+  --t-11: 11px;   /* 表头、微标、单位 */
+
+  /* ---- 字体族 ---- */
+  --u-ui: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --u-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* ---- 间距（4px 基准） ---- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-12: 48px;
+
+  /* ---- 圆角 / 描边 / 投影 ---- */
+  --r: 2px;                                     /* 全站唯一圆角 */
+  --hairline: 1px solid var(--steel-200);       /* 默认发丝线 */
+  --hairline-strong: 2px solid var(--steel-300);/* 强调描边 */
+  --shadow-1: 0 1px 3px rgba(20, 23, 27, .06);  /* 唯一一档投影，仅浮层 */
+
+  /* ---- 表格规格 ---- */
+  --row-h: 44px;
+  --row-h-dense: 40px;
+  --row-sel: rgba(245, 179, 1, .09);            /* 选中行：信号黄浅底 */
+
+  /* ==========================================================================
+   * Element Plus 变量覆盖
+   * ========================================================================*/
+
+  /* 结构色 —— 取代 Element 默认蓝 */
+  --el-color-primary: #14171b;
+  --el-color-primary-light-3: #3d454f;
+  --el-color-primary-light-5: #6b7480;
+  --el-color-primary-light-7: #c3c9d0;
+  --el-color-primary-light-8: #dde1e6;
+  --el-color-primary-light-9: #eef1f4;
+  --el-color-primary-dark-2: #000000;
+
+  /* 语义色 —— 整体压暗，适配工业基调 */
+  --el-color-success: #2f8f4e;
+  --el-color-success-light-3: #5aab73;
+  --el-color-success-light-5: #85c199;
+  --el-color-success-light-7: #b0d8be;
+  --el-color-success-light-8: #c9e3d3;
+  --el-color-success-light-9: #eaf4ed;
+  --el-color-success-dark-2: #26723e;
+
+  --el-color-warning: #bd7014;
+  --el-color-warning-light-3: #d19b5b;
+  --el-color-warning-light-5: #deb88a;
+  --el-color-warning-light-7: #ebd4b9;
+  --el-color-warning-light-8: #f2e2d0;
+  --el-color-warning-light-9: #f8f1e8;
+  --el-color-warning-dark-2: #975a10;
+
+  --el-color-danger: #c0392b;
+  --el-color-danger-light-3: #d06a5f;
+  --el-color-danger-light-5: #dd918a;
+  --el-color-danger-light-7: #eab9b4;
+  --el-color-danger-light-8: #f0cbc8;
+  --el-color-danger-light-9: #f8eae9;
+  --el-color-danger-dark-2: #9a2e22;
+  --el-color-error: #c0392b;
+  --el-color-error-light-3: #d06a5f;
+  --el-color-error-light-5: #dd918a;
+  --el-color-error-light-7: #eab9b4;
+  --el-color-error-light-8: #f0cbc8;
+  --el-color-error-light-9: #f8eae9;
+  --el-color-error-dark-2: #9a2e22;
+
+  --el-color-info: #5c6470;
+  --el-color-info-light-3: #8b919a;
+  --el-color-info-light-5: #adb2b8;
+  --el-color-info-light-7: #cfd2d6;
+  --el-color-info-light-8: #dee0e3;
+  --el-color-info-light-9: #eff0f1;
+  --el-color-info-dark-2: #4a505a;
+
+  /* 硬边与发丝线 */
+  --el-border-radius-base: 2px;
+  --el-border-radius-small: 2px;
+  --el-border-radius-round: 2px;
+  --el-border-color: #dde1e6;
+  --el-border-color-light: #eef1f4;
+  --el-border-color-lighter: #eef1f4;
+  --el-border-color-extra-light: #eef1f4;
+  --el-border-color-hover: #c3c9d0;
+
+  /* 文字层级（直接引用中性阶，改一处全站跟着走，避免两套值各自漂移） */
+  --el-text-color-primary: var(--ink);
+  --el-text-color-regular: var(--steel-700);
+  --el-text-color-secondary: var(--steel-500);
+  --el-text-color-placeholder: var(--steel-400);
+  --el-text-color-disabled: var(--steel-300);
+
+  /* 面与底 */
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f6f7f9;
+  --el-bg-color-overlay: #ffffff;
+  --el-fill-color-blank: #ffffff;
+  --el-fill-color-light: #eef1f4;
+  --el-fill-color-lighter: #eef1f4;
+  --el-fill-color: #f6f7f9;
+
+  /* 投影只保留一档 */
+  --el-box-shadow: 0 1px 3px rgba(20, 23, 27, .06);
+  --el-box-shadow-light: 0 1px 3px rgba(20, 23, 27, .06);
+  --el-box-shadow-lighter: 0 1px 3px rgba(20, 23, 27, .06);
+  --el-box-shadow-dark: 0 1px 3px rgba(20, 23, 27, .06);
+
+  /* 字号基准 */
+  --el-font-size-base: 14px;
+  --el-font-size-small: 13px;
+  --el-font-size-extra-small: 12px;
+  --el-font-size-large: 16px;
+
+  /* 表单聚焦色 */
+  --el-input-focus-border-color: #f5b301;
+}
+
+/* ==========================================================================
+ * ⚠️ 表格变量必须声明在 .el-table 上，不能放 :root
+ *
+ * EP 自己在 `.el-table { --el-table-header-bg-color: … }` 上声明了这 8 个变量
+ * （node_modules/element-plus/dist/index.css 字节 ~272667）。
+ * CSS 自定义属性的规则是：**元素自身的声明永远赢过继承来的值**，
+ * 所以写在 :root 上会继承到 .el-table，却被它自己的声明直接压掉 ——
+ * 表现为「表头底色仍是白色」（实测踩到）。
+ * 本文件在 EP 之后引入 ⇒ 同特异性 (0,1,0) 时源序在后者胜出，故此处能生效。
+ * ========================================================================*/
+.el-table {
+  /* 表头浅底 + hover 整行浅底（取消斑马纹） */
+  --el-table-header-bg-color: var(--steel-100);
+  --el-table-header-text-color: var(--steel-600);
+  --el-table-row-hover-bg-color: var(--steel-100);
+  --el-table-current-row-bg-color: var(--row-sel);
+  --el-table-border-color: var(--steel-200);
+  --el-table-text-color: var(--steel-700);
+  --el-table-bg-color: var(--surface);
+  --el-table-tr-bg-color: var(--surface);
+}
+
+/* ==========================================================================
+ * 基础排版
+ * ========================================================================*/
+
+body {
+  font-family: var(--u-ui);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* ==========================================================================
+ * 表格规格（§5.4）
+ * 表头 11px + 字距 + 钢灰；行高 44px；取消斑马纹，hover 整行浅底；数字列等宽右对齐
+ * ========================================================================*/
+
+.el-table th.el-table__cell > .cell {
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--steel-600);
+}
+
+.el-table .el-table__cell {
+  padding: 8px 0;
+}
+
+/* 选中行：信号黄浅底，比 EP 默认的 primary-light-9 更能与 hover 区分 */
+.el-table__body tr.current-row > td.el-table__cell,
+.el-table__body tr.el-table__row--striped.current-row > td.el-table__cell {
+  background-color: var(--row-sel);
+}
+
+/* ==========================================================================
+ * 按钮层级（§5.2）
+ * primary = 黑实心，每屏最多 1 个；hover 翻转为信号黄底黑字（沿用登录页配方）
+ * ========================================================================*/
+
+.el-button--primary {
+  --el-button-bg-color: var(--ink);
+  --el-button-border-color: var(--ink);
+  --el-button-text-color: #ffffff;
+  --el-button-hover-bg-color: var(--signal);
+  --el-button-hover-border-color: var(--signal);
+  --el-button-hover-text-color: var(--ink);
+  --el-button-active-bg-color: var(--signal-d);
+  --el-button-active-border-color: var(--signal-d);
+  --el-button-active-text-color: var(--ink);
+  --el-button-disabled-bg-color: var(--steel-300);
+  --el-button-disabled-border-color: var(--steel-300);
+  --el-button-disabled-text-color: var(--surface);
+}
+
+/* danger = 红字红边（仅破坏性动作），不使用实心红，降低视觉噪声 */
+.el-button--danger {
+  --el-button-text-color: var(--danger);
+  --el-button-border-color: var(--danger);
+  --el-button-hover-bg-color: var(--danger);
+  --el-button-hover-border-color: var(--danger);
+  --el-button-hover-text-color: #ffffff;
+}
+
+/* ==========================================================================
+ * 表单聚焦环（§5.2）—— 信号黄描边 + 3px 外环（登录页已验证的配方）
+ * ========================================================================*/
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus {
+  box-shadow: inset 0 0 0 1px var(--signal), 0 0 0 3px rgba(245, 179, 1, .15);
+}
+
+/* ==========================================================================
+ * 通用工具类
+ * ========================================================================*/
+
+/* 数据用等宽：资产编码 / 标签编号 / 维修单号 / 金额与数量 / 日期时间 / 大数字 */
+.u-mono {
+  font-family: var(--u-mono);
+  font-variant-numeric: tabular-nums;
+}

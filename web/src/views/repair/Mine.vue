@@ -8,19 +8,21 @@
       </div>
 
       <el-table v-if="!isMobile" :data="rows" border v-loading="loading" @row-click="go" class="clickable">
-        <el-table-column prop="code" label="单号" width="160" />
+        <el-table-column prop="code" label="单号" width="160">
+          <template #default="{ row }"><span class="u-mono">{{ row.code }}</span></template>
+        </el-table-column>
         <el-table-column prop="asset_name" label="资产" min-width="160" show-overflow-tooltip />
         <el-table-column prop="fault_desc" label="问题描述" min-width="180" show-overflow-tooltip />
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="110">
           <template #default="{ row }">
-            <el-tag :type="repairStatusTag(row.status)" size="small">{{ row.status_label }}</el-tag>
+            <StatusChip kind="repair" :value="row.status" :label="row.status_label" />
           </template>
         </el-table-column>
         <el-table-column label="处理人" width="120">
           <template #default="{ row }">{{ handlerText(row) }}</template>
         </el-table-column>
         <el-table-column label="最近变更" width="170">
-          <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
+          <template #default="{ row }"><span class="u-mono">{{ formatTime(row.updated_at) }}</span></template>
         </el-table-column>
       </el-table>
 
@@ -28,13 +30,13 @@
         <div v-for="row in rows" :key="row.id" class="m-card" @click="go(row)">
           <div class="m-card-hd">
             <span class="m-title">{{ row.asset_name || row.asset_code }}</span>
-            <el-tag :type="repairStatusTag(row.status)" size="small">{{ row.status_label }}</el-tag>
+            <StatusChip kind="repair" :value="row.status" :label="row.status_label" />
           </div>
           <div class="m-grid">
-            <span class="k">单号</span><span>{{ row.code }}</span>
+            <span class="k">单号</span><span class="u-mono">{{ row.code }}</span>
             <span class="k">问题</span><span>{{ row.fault_desc }}</span>
             <span class="k">处理人</span><span>{{ handlerText(row) }}</span>
-            <span class="k">最近变更</span><span>{{ formatTime(row.updated_at) }}</span>
+            <span class="k">最近变更</span><span class="u-mono">{{ formatTime(row.updated_at) }}</span>
           </div>
         </div>
         <el-empty v-if="!rows.length && !loading" description="还没有报修记录" />
@@ -59,8 +61,8 @@ import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { Refresh } from "@element-plus/icons-vue";
 import http from "../../api/client";
-import { repairStatusTag } from "../../api/meta";
 import { useIsMobile } from "../../composables/useIsMobile";
+import StatusChip from "../../components/StatusChip.vue";
 
 const router = useRouter();
 const isMobile = useIsMobile();
@@ -114,8 +116,8 @@ onMounted(load);
 }
 
 .hint {
-  color: #909399;
-  font-size: 13px;
+  color: var(--steel-500);
+  font-size: var(--t-13);
 }
 
 .spacer {

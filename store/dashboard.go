@@ -131,6 +131,11 @@ func (s *Store) CountRepairsByStatuses(statuses []string, sc model.RepairScope) 
 // empID <= 0 一律返回 0，绝不退化成全量：账号没绑员工时「与我相关的资产」正确答案是 0，
 // 返回全量会让员工首页变成管理员首页（正是本次改动要修的毛病）。
 // 可见范围复用 scopeConds，与列表/总数同一口径。
+//
+// ⚠️ 与员工可见范围第三维（RepairingCardIDs）的交互：本函数在 scope 之上**再 AND**
+// `c.user_emp_id = ?`，所以即便 scope 里带了「有未结单维修单的资产」这一维，本卡片统计的
+// 仍是**我在用的**资产（报修维度被 AND 掉）。这是**有意的**——卡片标签就是「我的资产」，
+// 把「我在报修但不是我用的」也算进来会让数字对不上标签。不要「顺手」把它改成并集。
 func (s *Store) AssetTotalByHolder(sc model.AssetScope, empID int64) (int64, error) {
 	if empID <= 0 {
 		return 0, nil

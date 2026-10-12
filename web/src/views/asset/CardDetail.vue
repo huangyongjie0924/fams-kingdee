@@ -8,20 +8,25 @@
     @close="onClose"
   >
     <el-empty v-if="!card && loadErr" :description="loadErr" />
-    <el-tabs v-if="card" v-model="tab">
+
+    <!-- 左内容 + 右粘性操作栏（方案 §6.3）：滚到「基本信息」下半段时操作依然在视野内。
+         抽屉在窄屏只有一列宽，那里退回页内按钮（见下方 .ops 的 v-if）。 -->
+    <div v-if="card" class="detail-body">
+      <div class="detail-main">
+        <el-tabs v-model="tab">
       <el-tab-pane label="基本信息" name="basic">
         <el-descriptions :column="cols" border>
-          <el-descriptions-item label="资产编码">{{ card.asset_code }}</el-descriptions-item>
+          <el-descriptions-item label="资产编码"><span class="u-mono">{{ card.asset_code }}</span></el-descriptions-item>
           <el-descriptions-item label="资产名称">{{ card.name }}</el-descriptions-item>
           <el-descriptions-item label="资产类别">{{ card.category_name }}</el-descriptions-item>
           <el-descriptions-item label="规格型号">{{ card.spec }}</el-descriptions-item>
-          <el-descriptions-item label="设备序列号">{{ card.serial_no }}</el-descriptions-item>
+          <el-descriptions-item label="设备序列号"><span class="u-mono">{{ card.serial_no }}</span></el-descriptions-item>
           <el-descriptions-item label="计量单位">{{ card.unit }}</el-descriptions-item>
-          <el-descriptions-item label="数量">{{ qty(card.quantity) }}</el-descriptions-item>
+          <el-descriptions-item label="数量"><span class="u-mono">{{ qty(card.quantity) }}</span></el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="STATUS_TAG[card.display_status] || 'info'" size="small">{{ card.display_status }}</el-tag>
+            <StatusChip :value="card.display_status || ''" :label="card.display_status || '-'" />
           </el-descriptions-item>
-          <el-descriptions-item label="金额">{{ money(card.amount) }}</el-descriptions-item>
+          <el-descriptions-item label="金额"><span class="u-mono">{{ money(card.amount) }}</span></el-descriptions-item>
           <el-descriptions-item label="使用公司">{{ card.use_company_name }}</el-descriptions-item>
           <el-descriptions-item label="使用部门">{{ card.use_dept_name }}</el-descriptions-item>
           <el-descriptions-item label="使用人">{{ card.user_emp_name }}</el-descriptions-item>
@@ -41,11 +46,14 @@
           </el-descriptions-item>
           <el-descriptions-item label="备注" :span="2">{{ card.remark }}</el-descriptions-item>
         </el-descriptions>
-        <div class="ops">
+        <!-- 窄屏没有右栏，操作留在页内 -->
+        <div v-if="isMobile" class="ops">
           <el-button :icon="Printer" @click="printLabel">打印标签</el-button>
           <!-- 扫码落地页的「报修」入口：存量 227 张标签零重印，扫完进详情再点一下（D6） -->
           <!-- 仅设备类（分类被标记为可维修）才显示报修；后端仍独立拦截，此处隐藏只是体验 -->
           <el-button v-if="auth.can('repair.report') && card?.category_repairable" type="primary" @click="goReport">报修</el-button>
+          <!-- 「跟资产台账做关联生成」的起点：把这张卡带进 IT 台账，已登记过就直接打开那条 -->
+          <el-button v-if="auth.can('it.manage')" @click="goITEquipment">生成 IT 设备记录</el-button>
         </div>
 
         <!-- 扫码后最想知道的是「这台机器现在要不要盘」，所以摆在详情正下方 -->
@@ -72,12 +80,12 @@
         <!-- 一台资产的历次维修记录：判断「该不该报废」时的依据（P0-6） -->
         <div v-if="repairOrders.length" class="repair-strip">
           <div v-for="r in repairOrders" :key="r.id" class="repair-row">
-            <span class="pcode">{{ r.code }}</span>
-            <el-tag :type="repairStatusTag(r.status)" size="small">{{ r.status_label }}</el-tag>
+            <span class="pcode u-mono">{{ r.code }}</span>
+            <StatusChip kind="repair" :value="r.status" :label="r.status_label" />
             <span class="fault">{{ r.fault_desc }}</span>
             <span class="muted">{{ handlerText(r) }}</span>
             <div class="spacer" />
-            <span class="muted">{{ formatTime(r.created_at) }}</span>
+            <span class="muted u-mono">{{ formatTime(r.created_at) }}</span>
             <el-button size="small" link type="primary" @click="goRepair(r)">查看</el-button>
           </div>
         </div>
@@ -95,6 +103,28 @@
       </el-tab-pane>
 
       <el-tab-pane label="财务信息" name="fin">
+        <!-- 说清楚「谁维护这些字段」：金蝶同步来的卡以星瀚为准，次日同步会覆盖本地改动；
+             手工建卡不在金蝶里，由本地维护。不写清楚用户会反复尝试编辑却改不动。 -->
+        <el-alert
+          v-if="card.synced"
+          type="info"
+          :closable="false"
+          show-icon
+          class="fin-tip"
+          title="财务字段由金蝶星瀚同步维护，本地不可改"
+        >
+          <template #default>
+            原值 / 累计折旧 / 净值等取自星瀚资产卡，每次同步都以星瀚为准覆盖本地值。
+          </template>
+        </el-alert>
+        <el-alert
+          v-else
+          type="success"
+          :closable="false"
+          show-icon
+          class="fin-tip"
+          title="本资产为手工建卡，财务字段由本地维护"
+        />
         <el-descriptions :column="cols" border>
           <el-descriptions-item label="资产类型">{{ card.fin_asset_type }}</el-descriptions-item>
           <el-descriptions-item label="所属公司">{{ card.owner_company_name }}</el-descriptions-item>
@@ -142,7 +172,29 @@
         </el-timeline>
         <el-empty v-if="!history.length" description="暂无履历" />
       </el-tab-pane>
-    </el-tabs>
+        </el-tabs>
+      </div>
+
+      <!-- 右栏粘性操作栏 -->
+      <aside v-if="!isMobile" class="detail-rail">
+        <el-button class="rail-btn" :icon="Printer" @click="printLabel">打印标签</el-button>
+        <el-button
+          v-if="auth.can('repair.report') && card?.category_repairable"
+          class="rail-btn"
+          type="primary"
+          @click="goReport"
+        >
+          报修
+        </el-button>
+        <!-- 「跟资产台账做关联生成」的起点：带着这张卡跳到 IT 台账页。
+             该页会先查这张卡有没有已登记的 IT 记录：有 → 直接打开编辑那条；
+             没有 → 打开新增并预填编码/使用人/部门/地点，人只需补 IT 属性。 -->
+        <el-button v-if="auth.can('it.manage')" class="rail-btn" @click="goITEquipment">
+          生成 IT 设备记录
+        </el-button>
+        <p class="rail-note">扫码落地后可直接报修，无需再找资产管理员</p>
+      </aside>
+    </div>
   </el-drawer>
 </template>
 
@@ -151,9 +203,10 @@ import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Printer } from "@element-plus/icons-vue";
 import http from "../../api/client";
-import { STATUS_TAG, money, qty, repairStatusTag } from "../../api/meta";
+import { money, qty } from "../../api/meta";
 import { auth } from "../../stores/auth";
 import { useIsMobile } from "../../composables/useIsMobile";
+import StatusChip from "../../components/StatusChip.vue";
 
 const props = defineProps<{ modelValue: boolean; cardId: number }>();
 const emit = defineEmits(["update:modelValue"]);
@@ -210,6 +263,16 @@ function printLabel() {
 // 报修：带上资产编码跳报修页，报修页据此回填资产信息（D6 复用旧深链 + 落地页按钮）
 function goReport() {
   router.push({ name: "repair-new", query: { asset_code: card.value?.asset_code || "" } });
+}
+
+// 「生成 IT 设备记录」：带着这张卡的 id 跳到 IT 台账页（2026-10-10 需求）。
+//
+// 为什么不在这里内联一个表单：IT 属性有 14 个字段，抽屉里塞不下；而且这个动作的语义
+// 本来就是「去 IT 台账处理这台设备」，跳过去之后用户还能顺手看到别的设备。
+// 页面侧按 from_card 判重：已登记过就直接打开那条记录，不会重复新增
+// （一张资产卡最多一条 IT 记录，由 uk_it_card 保证）。
+function goITEquipment() {
+  router.push({ name: "it-equipment", query: { from_card: String(props.cardId) } });
 }
 
 function goRepair(r: any) {
@@ -276,6 +339,49 @@ watch(() => props.cardId, load);
 </script>
 
 <style scoped>
+/* —— 左内容 + 右粘性操作栏 —— */
+.detail-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.detail-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-rail {
+  flex: 0 0 auto;
+  width: 128px;
+  /* 抽屉 body 就是滚动容器，sticky 相对它生效 */
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 10px;
+  background: var(--steel-100);
+  border: var(--hairline);
+  border-radius: var(--r);
+}
+
+.rail-btn {
+  width: 100%;
+  margin-left: 0;
+}
+
+.rail-note {
+  margin: 4px 0 0;
+  font-size: var(--t-11);
+  line-height: 1.5;
+  color: var(--steel-500);
+}
+
+.fin-tip {
+  margin-bottom: 12px;
+}
+
 .photos {
   display: flex;
   gap: 8px;
@@ -285,13 +391,13 @@ watch(() => props.cardId, load);
 .photo {
   width: 96px;
   height: 96px;
-  border-radius: 4px;
+  border-radius: var(--r);
 }
 
 .operator {
   margin-left: 8px;
-  color: #909399;
-  font-size: 12px;
+  color: var(--steel-500);
+  font-size: var(--t-12);
 }
 
 .ops {
@@ -300,17 +406,19 @@ watch(() => props.cardId, load);
 
 .count-strip {
   margin-top: 12px;
-  border: 1px solid #d9ecff;
-  background: #f4f9ff;
-  border-radius: 4px;
+  border: var(--hairline);
+  border-left: 3px solid var(--info);
+  background: var(--steel-100);
+  border-radius: var(--r);
   padding: 4px 8px;
 }
 
 .repair-strip {
   margin-top: 12px;
-  border: 1px solid #fde2e2;
-  background: #fef4f4;
-  border-radius: 4px;
+  border: var(--hairline);
+  border-left: 3px solid var(--warn);
+  background: var(--paper);
+  border-radius: var(--r);
   padding: 4px 8px;
 }
 
@@ -323,7 +431,7 @@ watch(() => props.cardId, load);
 }
 
 .repair-row + .repair-row {
-  border-top: 1px dashed #fde2e2;
+  border-top: 1px dashed var(--steel-200);
 }
 
 .fault {
@@ -342,7 +450,7 @@ watch(() => props.cardId, load);
 }
 
 .count-row + .count-row {
-  border-top: 1px dashed #d9ecff;
+  border-top: 1px dashed var(--steel-200);
 }
 
 .pname {
@@ -350,13 +458,13 @@ watch(() => props.cardId, load);
 }
 
 .pcode {
-  color: #909399;
-  font-size: 12px;
+  color: var(--steel-500);
+  font-size: var(--t-12);
 }
 
 .muted {
-  color: #909399;
-  font-size: 12px;
+  color: var(--steel-500);
+  font-size: var(--t-12);
 }
 
 @media (max-width: 767px), (max-height: 520px) {

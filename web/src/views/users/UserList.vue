@@ -8,8 +8,8 @@
     <el-card v-else>
       <div class="toolbar">
         <span class="hint">
-          只读、盘点员、维修工绑定员工：只读看自己名下资产与自己的报修，盘点员据此被指派资产，
-          维修工据此被指派维修单；部门负责人选管辖部门，看本部门及全部下级部门。
+          员工 / 盘点员 / 维护人员绑定员工：员工看自己名下资产及报修中的资产，盘点员据此被指派资产，
+          维护人员据此被指派维修单；部门负责人选管辖部门，看本部门及全部下级部门。
         </span>
         <span class="spacer" />
         <el-button v-if="canManage" type="primary" :icon="Plus" @click="open()">新增账号</el-button>
@@ -18,9 +18,9 @@
       <el-table :data="users" border v-loading="loading">
         <el-table-column prop="username" label="用户名" width="160" />
         <el-table-column prop="real_name" label="姓名" width="140" />
-        <el-table-column label="角色" width="140">
+        <el-table-column label="角色" width="200">
           <template #default="{ row }">
-            <el-tag size="small">{{ roleLabel(row.role) }}</el-tag>
+            <el-tag size="small">{{ roleLabelOf(row) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="绑定员工 / 管辖部门" min-width="180">
@@ -59,19 +59,20 @@
           <el-input v-model="form.real_name" />
         </el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="form.role" style="width: 100%">
+          <el-select v-model="form.roles" multiple style="width: 100%"
+            placeholder="可多选">
             <el-option v-for="r in roles" :key="r.value" :label="r.label" :value="r.value" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="form.role === 'dept_head'" label="管辖部门">
+        <el-form-item v-if="needDept" label="管辖部门">
           <el-select v-model="form.dept_id" filterable clearable style="width: 100%"
             placeholder="本部门及全部下级部门">
             <el-option v-for="d in departments" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>
-        <el-form-item v-else label="绑定员工">
+        <el-form-item v-if="needEmployee" label="绑定员工">
           <el-select v-model="form.employee_id" filterable clearable style="width: 100%"
-            placeholder="盘点员 / 只读需绑定">
+            placeholder="员工 / 盘点员 / 维护人员需绑定">
             <el-option v-for="e in employees" :key="e.id" :label="empLabel(e)" :value="e.id" />
           </el-select>
         </el-form-item>
@@ -105,21 +106,57 @@ const form = ref<any>({});
 
 const canManage = computed(() => auth.can("user.manage"));
 
+// 顺序与后端 model.Roles 一致（同时是展示顺序 / NormalizeRoles 的归一化顺序）。
+// ⚠️ 新增角色必须**追加在末尾**（与后端 Roles 同一条纪律，见 model/model.go 的注释）。
 const roles = [
   { value: "admin", label: "管理员" },
   { value: "asset_manager", label: "资产管理员" },
   { value: "counter", label: "盘点员" },
   { value: "dept_head", label: "部门负责人" },
-  { value: "repair_tech", label: "维修工" },
-  { value: "viewer", label: "只读" },
+  { value: "maintainer", label: "维护人员" },
+  { value: "employee", label: "员工" },
+  // it_admin（IT 管理员）：维护 IT 信息设备台账。**不需要绑定员工**——
+  // 它在 assetScope / itScope 里都是「不限」，不靠 employee_id 收窄范围
+  // （对照 employee / counter / maintainer 三者的范围都依赖 employee_id）。
+  // 故**刻意不加进** EMP_BOUND_ROLES，后端 roleBindingErr 同样不要求它。
+  { value: "it_admin", label: "IT 管理员" },
 ];
 
-function roleLabel(v: string) {
-  return roles.find((r) => r.value === v)?.label ?? v;
+// 需要绑定员工的角色：缺 employee_id 时后端会拒绝，前端只做友好提示。
+const EMP_BOUND_ROLES = ["employee", "counter", "maintainer"];
+
+// form.roles 可能是旧数据里的单值 role，统一取成数组，模板与提交都用它。
+const formRoles = computed<string[]>(() => {
+  const r = form.value.roles;
+  if (Array.isArray(r)) return r;
+  return r ? [r] : [];
+});
+
+// 含 dept_head 才显示「管辖部门」。
+const needDept = computed(() => formRoles.value.includes("dept_head"));
+// 含任一需绑定员工的角色就显示「绑定员工」；没有 dept_head 时也显示（沿用旧行为：非部门负责人显示绑定员工）。
+const needEmployee = computed(
+  () => formRoles.value.some((r) => EMP_BOUND_ROLES.includes(r)) || !formRoles.value.includes("dept_head"),
+);
+
+// 单行角色展示：优先用多角色 roles，回落到单值 role（旧数据）。
+function roleLabelOf(row: any): string {
+  const rs: string[] = row.roles?.length ? row.roles : row.role ? [row.role] : [];
+  return rs.map((r) => roles.find((x) => x.value === r)?.label ?? r).join("、");
 }
 
 function empLabel(e: any) {
   return e.dept_name ? `${e.name}（${e.dept_name}）` : e.name;
+}
+
+// 前端友好校验：与后端 roleBindingErr 同口径（权威校验在后端）。
+// 返回 null 表示通过，否则返回提示文案。
+function bindingError(rs: string[], employeeId: any, deptId: any): string | null {
+  if (rs.includes("dept_head") && !deptId) return "部门负责人必须选择管辖的部门";
+  if (rs.includes("employee") && !employeeId) return "员工需绑定员工";
+  if (rs.includes("counter") && !employeeId) return "盘点员需绑定员工";
+  if (rs.includes("maintainer") && !employeeId) return "维护人员需绑定员工";
+  return null;
 }
 
 async function load() {
@@ -144,18 +181,37 @@ async function loadDepartments() {
 
 function open(row?: any) {
   form.value = row
-    ? { ...row, password: "" }
+    ? {
+        ...row,
+        password: "",
+        // 旧账号只有 role、没有 roles，回落到单元素数组（与后端 EffectiveRoles 同规则）。
+        roles: row.roles?.length ? row.roles : row.role ? [row.role] : [],
+      }
     : {
-        id: 0, username: "", password: "", real_name: "", role: "viewer",
+        id: 0, username: "", password: "", real_name: "",
+        roles: ["employee"],
         employee_id: null, dept_id: null, enabled: true,
       };
   dialog.value = true;
 }
 
 async function save() {
-  const { id, username, password, real_name, role, employee_id, dept_id, enabled } = form.value;
+  const { id, username, password, real_name, employee_id, dept_id, enabled } = form.value;
+  const roleList: string[] = Array.isArray(form.value.roles)
+    ? form.value.roles
+    : form.value.roles
+      ? [form.value.roles]
+      : [];
+  const err = bindingError(roleList, employee_id, dept_id);
+  if (err) {
+    ElMessage.warning(err);
+    return;
+  }
   const payload = {
-    username, password, real_name, role,
+    username, password, real_name,
+    roles: roleList,
+    // role 保留为主角色（= roles[0]），旧后端 / 回滚时仍可用。
+    role: roleList[0],
     employee_id: employee_id || 0,
     dept_id: dept_id || 0,
     enabled,

@@ -24,7 +24,9 @@ func TestCardCategoryRepairableDerivation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("连接数据库失败: %v", err)
 	}
-	defer st.Close()
+	// 关连接走 t.Cleanup（与下面探针卡清理同为 LIFO）：先注册 ⇒ 最后执行 ⇒ 删行跑完才关连接。
+	// 详见 store/user_roles_test.go 的注释；勿改回 defer st.Close()。
+	t.Cleanup(func() { st.Close() })
 
 	// 取一个可维修分类与一个不可维修分类（需求 A 的前置数据）。
 	var repairableID, nonRepairableID int64
@@ -50,7 +52,7 @@ func TestCardCategoryRepairableDerivation(t *testing.T) {
 	}
 	for _, c := range []string{codeRep, codeNon, codeSentinel} {
 		cleanup(c)
-		defer cleanup(c)
+		t.Cleanup(func() { cleanup(c) })
 	}
 
 	insert := func(code string, categoryID int64) {

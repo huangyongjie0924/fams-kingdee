@@ -1,8 +1,15 @@
 package syncer
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"asset-mgr/config"
+	"asset-mgr/integration/yunzhijia"
 )
 
 // 调度时刻的计算是整条定时链路里唯一"纯逻辑"的部分，也是最容易在
@@ -149,5 +156,34 @@ func TestScheduledWindowIsOneDay(t *testing.T) {
 func TestTriggerSchedulerIsPersistedValue(t *testing.T) {
 	if TriggerScheduler != "scheduler" {
 		t.Errorf("TriggerScheduler 是落库值，改动前需同步迁移历史数据与前端展示，实际 %q", TriggerScheduler)
+	}
+}
+
+// TestSchedulerRunYunzhijiaOrgDisabledIsNoop 钉住「通讯录同步是独立一步、且尊重开关」：
+// 未启用 directory_sync_enabled 时，调度器这一步不得发起任何请求。
+//
+// 它同时证明这一步不会 panic / 不会因 nil store 出事——门禁在触库与触网之前就返回了。
+func TestSchedulerRunYunzhijiaOrgDisabledIsNoop(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{}
+	cfg.Yunzhijia.BaseURL = "http://example.invalid"
+	cfg.Yunzhijia.AppID = "app"
+	cfg.Yunzhijia.Secret = "secret"
+	cfg.Yunzhijia.EID = "eid-test"
+	cfg.Yunzhijia.DirectorySyncEnabled = false
+
+	svc := NewService(nil, nil, cfg)
+	svc.SetYunzhijiaClient(yunzhijia.NewClient(srv.URL, "app", "secret", time.Second))
+	sched := NewScheduler(svc, 0, 0)
+
+	sched.runYunzhijiaOrg(context.Background())
+
+	if got := atomic.LoadInt32(&hits); got != 0 {
+		t.Fatalf("未启用通讯录同步时不得发起任何请求，实际 %d", got)
 	}
 }

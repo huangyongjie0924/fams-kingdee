@@ -20,7 +20,9 @@ func TestRepairWorkflowAgainstRealDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("连接数据库失败: %v", err)
 	}
-	defer st.Close()
+	// 关连接走 t.Cleanup（与下面 cleanup 同为 LIFO）：先注册 ⇒ 最后执行 ⇒ 删行跑完才关连接。
+	// 详见 store/user_roles_test.go 的注释；勿改回 defer st.Close()。
+	t.Cleanup(func() { st.Close() })
 
 	const code = "ZZ-REPAIR-E2E-0001"
 

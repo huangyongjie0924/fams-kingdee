@@ -12,6 +12,10 @@ const routes = [
       { path: "assets/new", name: "asset-new", component: () => import("../views/asset/CardForm.vue") },
       { path: "assets/labels", name: "asset-labels", component: () => import("../views/asset/Labels.vue") },
       { path: "assets/:id/edit", name: "asset-edit", component: () => import("../views/asset/CardForm.vue") },
+      // IT 信息设备台账（2026-10-10 需求）。**新增路由，既有 23 条一条未动** ——
+      // 云之家待办深链 `#/repairs/{id}` 已推到员工手机上，动既有路由的风险不可接受。
+      { path: "it-equipment", name: "it-equipment", component: () => import("../views/it/List.vue") },
+      { path: "it-equipment/import", name: "it-import", component: () => import("../views/it/Import.vue") },
       { path: "scan", name: "scan", component: () => import("../views/scan/Scan.vue") },
       { path: "import", name: "import", component: () => import("../views/asset/Import.vue") },
       { path: "sync", name: "sync", component: () => import("../views/sync/Sync.vue") },
@@ -38,7 +42,8 @@ router.beforeEach((to) => {
     return { name: "home" };
   }
   if (to.name !== "login" && !auth.token) {
-    return { name: "login" };
+    // 带上目标路径，登录后回跳到同一张单（如经待办深链进入的维修单详情）。
+    return { name: "login", query: { redirect: to.fullPath } };
   }
   return true;
 });

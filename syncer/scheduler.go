@@ -176,6 +176,13 @@ func (s *Scheduler) tick(ctx context.Context) {
 
 	err := s.runOnce(ctx)
 
+	// 云之家通讯录增量同步是**独立一步**：与星瀚两阶段互不阻塞。
+	//
+	// 放在 runOnce **之后**（而不是 runOnce 内部）正是为了这一点：runOnce 在
+	// 「组织同步失败」时会提前 return，若把通讯录同步写进 runOnce 就会被一并跳过。
+	// 它的失败 / panic 都不得影响本批次的结论，也不得被星瀚的失败跳过。
+	s.runYunzhijiaOrg(ctx)
+
 	s.mu.Lock()
 	s.running = false
 	s.lastRun = time.Now()
@@ -191,6 +198,40 @@ func (s *Scheduler) tick(ctx context.Context) {
 		return
 	}
 	log.Printf("定时同步完成")
+}
+
+// runYunzhijiaOrg 在每日批次里跑一步云之家通讯录增量同步（openId 回填路径 B）。
+//
+// 与星瀚两阶段**独立**：
+//   - 单独 recover 自己的 panic，绝不外溢；
+//   - 任何错误只记日志、不返回给调用方——它不参与「本批次是否成功」的判定；
+//   - 由 tick 在 runOnce 之后调用，即使星瀚组织同步失败提前返回，它照样跑。
+//
+// 不用独立 goroutine：本函数本身不做重活（一次分页拉取 + 回填），且批次已由 tick
+// 的 running 标志串行化；再加 goroutine 只会引入「批次结束了但通讯录还在跑」的
+// 不确定状态。非阻塞由「不传播错误 / panic」保证，而非并发。
+func (s *Scheduler) runYunzhijiaOrg(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("通讯录同步 panic 已恢复（不影响星瀚批次）: %v", r)
+		}
+	}()
+
+	yzCtx, cancel := context.WithTimeout(ctx, phaseTimeout)
+	defer cancel()
+	res, err := s.svc.SyncYunzhijiaOrg(yzCtx, TriggerScheduler)
+	if err != nil {
+		log.Printf("通讯录同步失败（不影响星瀚批次）: %v", err)
+		return
+	}
+	if res == nil {
+		// 门禁跳过（未启用 / eid 为空 / 无客户端）：正常情况下不打日志。
+		return
+	}
+	// 打出 not_in_system：云之家通讯录远大于本系统花名册，「本系统无此工号」
+	// 是正常的大数，单独列出以免被误读成失败（它不计 Failed、不写 sync_run_error）。
+	log.Printf("通讯录同步完成: pages=%d fetched=%d updated=%d skipped=%d not_in_system=%d failed=%d",
+		res.Pages, res.Fetched, res.Updated, res.Skipped, res.NotInSystem, res.Failed)
 }
 
 // runOnce 跑一个完整批次：组织主数据 → 资产卡。

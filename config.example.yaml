@@ -56,6 +56,59 @@ yunzhijia:
   base_url: ""                   # 如 https://yunzhijia.com
   app_id: ""
   secret: ""
+  # —— 待办通知（云之家 云之家，见 docs/云之家待办通知集成方案.md §8）——
+  # 总开关，默认关闭（灰度）。关闭时所有待办通知为 no-op，维修流程行为与接入前逐字节一致。
+  todo_enabled: false
+  # 待办 appId（generatetodo 的 appId）。留空自动回退 app_id（已实测两者是同一个「第三方应用ID」）。
+  todo_app_id: ""
+  # 待办图标 URL（generatetodo 必填，需公网可访问）。缺失会创建失败或发出点不开的待办。
+  head_img: ""
+  # 0=通知中心 / 1=待审批。P0 统一 0（应用需被勾选为「通知类」）。
+  todo_type: 0
+  # 通知分类，仅当应用被勾选为「通知类」时生效（P0 可不填）。
+  tag_id: ""
+  # 发送人 openId（选填）。
+  sender_id: ""
+  # 团队 id，通讯录增量同步用。
+  eid: ""
+  # FAMS 对外基址（含协议），拼待办深链用（前端是 hash 路由 → {portal_base_url}/#/repairs/{id}）。
+  # 启用待办时必填；须与用户登录 云之家门户时的协议一致。
+  portal_base_url: ""
+  # 是否启用云之家通讯录增量同步（openId 回填路径 B）。
+  directory_sync_enabled: false
+  # 信息性告知开关（#2 受理 / #5 接单 / #7 完工 三处给收件人的「进展告知」），默认 false。
+  # 打开后这三处发「新建**已读**待办」（create 后紧跟 action{read:1}），即「推，但不打扰」。
+  # 注意：流程中心通道下这三处不产生（该通道没有「待办置已读」能力）。
+  informational_enabled: false
+
+  # —— 统一流程中心（cloudflow，见 docs/云之家流程中心集成方案.md §8）——
+  # 总开关，默认 false：关闭时新待办走 im-todo，行为与现在完全一致。
+  # 打开后「新」待办走流程中心，而「旧」待办（repair_notify_task.channel='im-todo'）
+  # 继续走 im-todo —— 两种集成方式必须并存，否则切换前已发出的旧待办转不成已办。
+  flowcenter_enabled: false
+  # 业务系统模板标识（init 的 typeId）。**可以是任意值**，由我们自定义（官方示例：付款申请用
+  # FQSK、请假用 QJSQ），**不需要去云之家查询**。本项目取 WXSQD =「维修申请单」。
+  # 约束来自 send 接口「同一流程每次发送待办都用相同 typeId」⇒ 发过待办后不能改，init 之前可自由改。
+  # ⚠️ 别与官方「必读」第 1 条混淆：那一条约束的是 **AppId**（app_id 已实测为 500000084，不要动）。
+  flowcenter_type_id: "WXSQD"
+  # 模板名称（智能审批里显示的流程名），如「维修工单」。
+  flowcenter_type_name: ""
+  # 模板所属分类名（一般填轻应用名）。
+  flowcenter_app_name: ""
+  # 业务系统发起页地址（统一发起用，P0 不做统一发起，留空）。
+  flowcenter_web_url: ""
+  flowcenter_mobile_url: ""
+  # 快捷同意签名密钥（轻应用管理中心可查；P0 不做快捷同意，留空）。
+  flowcenter_sign_key: ""
+
+  # —— 深链免登（第 2 层兜底，见 docs/云之家待办通知集成方案.md §5.4）——
+  # 免登 token 的**独立**签名密钥。**必须独立于 auth.jwt_secret**（物理隔离，缺陷 1 的修法核心），
+  # 建议走环境变量 YZJ_LOGIN_TOKEN_SECRET，不要写进配置文件。
+  # 留空 ⇒ 第 2 层静默禁用（记一条日志），第 0 层（APP ticket）与第 3 层（登录页）仍可用。
+  login_token_secret: ""
+  # 免登 token 有效期，Go 时长字符串（如 "24h" / "90m"）。须覆盖「待办可点击窗口」。
+  # <= 0 回退 24h。环境变量覆盖：YZJ_DEEPLINK_TOKEN_TTL（时长）/ YZJ_DEEPLINK_TOKEN_TTL_HOURS（整数小时）。
+  deeplink_token_ttl: "24h"
 
 sync:
   enable: false                  # 金蝶凭据缺失时会被强制关闭

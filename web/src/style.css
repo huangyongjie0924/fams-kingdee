@@ -6,9 +6,9 @@ body,
 }
 
 body {
-  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-  background: #f5f7fa;
-  color: #303133;
+  font-family: var(--u-ui);
+  background: var(--paper);
+  color: var(--ink);
 }
 
 .page {
@@ -33,22 +33,22 @@ body {
   align-items: center;
   flex-wrap: wrap;
   padding: 8px 12px;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--surface);
+  border: var(--hairline);
   border-bottom: none;
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--t-13);
+  color: var(--steel-700);
 }
 
 .summary-bar b {
-  color: #303133;
+  color: var(--ink);
 }
 
 /* 窄屏卡片列表的基础样式，各页按需组合 */
 .m-card {
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
+  background: var(--surface);
+  border: var(--hairline);
+  border-radius: var(--r);
   padding: 12px;
   margin-bottom: 10px;
 }
@@ -61,26 +61,26 @@ body {
 }
 
 .m-title {
-  font-size: 15px;
+  font-size: var(--t-16);
   font-weight: 600;
-  color: #303133;
+  color: var(--ink);
 }
 
 .m-muted {
-  color: #909399;
-  font-size: 12px;
+  color: var(--steel-500);
+  font-size: var(--t-12);
 }
 
 .m-grid {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 10px;
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--t-13);
+  color: var(--steel-700);
 }
 
 .m-grid .k {
-  color: #909399;
+  color: var(--steel-500);
 }
 
 /* v-loading 的遮罩要相对卡片列表定位 */
@@ -110,8 +110,8 @@ body {
 
 .m-field .k {
   flex: 0 0 56px;
-  color: #909399;
-  font-size: 13px;
+  color: var(--steel-500);
+  font-size: var(--t-13);
 }
 
 .m-field .el-select,
@@ -147,8 +147,8 @@ body {
 /* 编码、过滤条件、longnumber 这类内容用等宽字体，便于逐字符比对。
    多个 .mono 并排时靠相邻选择器留间距，调用处不用自己写 margin。 */
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--u-mono);
+  font-size: var(--t-12);
   word-break: break-all;
 }
 
@@ -159,6 +159,14 @@ body {
 /* 主数据弹窗里「本行由星瀚托管」的提示，和表单之间要留出间距 */
 .managed-tip {
   margin-bottom: 12px;
+}
+
+/* 批量删除维修单的确认框：消息里列了待删单号（含换行），
+   ElMessageBox 默认把消息当纯文本渲染、换行会塌成空格，这里保留换行。
+   用 customClass 限定作用范围，不改动其它确认框。 */
+.repair-delete-confirm .el-message-box__message p {
+  white-space: pre-line;
+  word-break: break-all;
 }
 
 @media (max-width: 767px), (max-height: 520px) {

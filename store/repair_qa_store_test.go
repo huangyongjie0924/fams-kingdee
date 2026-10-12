@@ -57,8 +57,9 @@ func qaNewCard(t *testing.T, st *Store, code string, bizStatus string) *model.As
 
 // TestQASyncIsolationOfBizStatus 是本次最高风险项（R1）的实测：
 // 直接调用**真实同步写路径** ApplyOwnedCardTx（非 dry-run），验证
-//   1) biz_status 不被同步改动、也不被清空；
-//   2) status（星瀚托管列）按设计被同步覆盖。
+//  1. biz_status 不被同步改动、也不被清空；
+//  2. status（星瀚托管列）按设计被同步覆盖。
+//
 // 用一张 QA 探针卡做，不碰任何真实业务卡。
 func TestQASyncIsolationOfBizStatus(t *testing.T) {
 	st, err := New(testDSN(t))
@@ -234,7 +235,7 @@ func TestQAStoreLevelIllegalTransitions(t *testing.T) {
 		}
 	}
 	must(RepairTransitionInput{Action: model.RepairActionAccept, Operator: "qa"})
-	must(RepairTransitionInput{Action: model.RepairActionDispatch, Operator: "qa", AssigneeEmpID: 9002, AssigneeName: "QA维修工"})
+	must(RepairTransitionInput{Action: model.RepairActionDispatch, Operator: "qa", AssigneeEmpID: 9002, AssigneeName: "QA维护人员"})
 	must(RepairTransitionInput{Action: model.RepairActionTake, Operator: "qa"})
 	must(RepairTransitionInput{Action: model.RepairActionFinish, Operator: "qa", HandlerDesc: "修好了"})
 	must(RepairTransitionInput{Action: model.RepairActionConfirm, Operator: "qa"})
@@ -283,7 +284,7 @@ func TestQADataHygiene(t *testing.T) {
 
 	var nAtt, nAttE2E int
 	_ = st.db.QueryRow("SELECT COUNT(*) FROM repair_attachment").Scan(&nAtt)
-	_ = st.db.QueryRow("SELECT COUNT(*) FROM repair_attachment WHERE uploaded_by IN ('e2e','qa','qa-sync') AND "+grace).Scan(&nAttE2E)
+	_ = st.db.QueryRow("SELECT COUNT(*) FROM repair_attachment WHERE uploaded_by IN ('e2e','qa','qa-sync') AND " + grace).Scan(&nAttE2E)
 
 	var nProbeCard int
 	_ = st.db.QueryRow(`SELECT COUNT(*) FROM asset_card

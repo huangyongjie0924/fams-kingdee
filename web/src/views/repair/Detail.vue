@@ -2,9 +2,9 @@
   <div class="page">
     <el-card v-loading="loading">
       <div class="toolbar">
-        <el-button :icon="ArrowLeft" @click="back">返回</el-button>
+        <el-button v-if="!readonly" :icon="ArrowLeft" @click="back">返回</el-button>
         <span class="title">维修单 {{ order?.code || "" }}</span>
-        <el-tag v-if="order" :type="repairStatusTag(order.status)" size="small">{{ order.status_label }}</el-tag>
+        <StatusChip v-if="order" kind="repair" :value="order.status" :label="order.status_label" />
         <span class="spacer" />
         <el-button :icon="Refresh" @click="load">刷新</el-button>
       </div>
@@ -31,14 +31,27 @@
         </el-descriptions>
 
         <div class="ops">
-          <el-button v-if="canAccept" type="primary" @click="act('accept')">受理</el-button>
-          <el-button v-if="canReject" type="danger" plain @click="openRemark('reject')">驳回</el-button>
-          <el-button v-if="canDispatch" type="primary" @click="openDispatch">派工</el-button>
-          <el-button v-if="canTake" type="primary" @click="act('take')">接单</el-button>
-          <el-button v-if="canFinish" type="primary" @click="openFinish">报完工</el-button>
-          <el-button v-if="canConfirm" type="success" @click="act('confirm')">确认完工</el-button>
-          <el-button v-if="canReturn" type="warning" plain @click="openRemark('return')">退回</el-button>
-          <el-button v-if="canCancel" type="danger" plain @click="openRemark('cancel')">撤单 / 取消</el-button>
+          <!-- 只读会话（待办深链免登）且本来有可执行动作：换成明确的「登录后处理」入口，
+               否则按钮照常渲染、一点就 403。 -->
+          <template v-if="readonly && wouldHaveActions">
+            <el-alert
+              class="readonly-tip"
+              type="info"
+              :closable="false"
+              show-icon
+              title="当前是通过待办链接进入的只读视图，登录后可处理这张单。"
+            />
+            <el-button type="primary" @click="onRelogin">登录后处理</el-button>
+          </template>
+
+          <el-button v-if="canAccept && !readonly" type="primary" @click="act('accept')">受理</el-button>
+          <el-button v-if="canReject && !readonly" type="danger" plain @click="openRemark('reject')">驳回</el-button>
+          <el-button v-if="canDispatch && !readonly" type="primary" @click="openDispatch">派工</el-button>
+          <el-button v-if="canTake && !readonly" type="primary" @click="act('take')">接单</el-button>
+          <el-button v-if="canFinish && !readonly" type="primary" @click="openFinish">报完工</el-button>
+          <el-button v-if="canConfirm && !readonly" type="success" @click="act('confirm')">确认完工</el-button>
+          <el-button v-if="canReturn && !readonly" type="warning" plain @click="openRemark('return')">退回</el-button>
+          <el-button v-if="canCancel && !readonly" type="danger" plain @click="openRemark('cancel')">撤单 / 取消</el-button>
         </div>
 
         <el-divider content-position="left">维修照片 / 附件</el-divider>
@@ -81,7 +94,7 @@
     <!-- 派工 -->
     <el-dialog v-model="dispatchVisible" title="派工" :fullscreen="isMobile" width="460px">
       <el-form label-width="90px" :label-position="isMobile ? 'top' : 'right'">
-        <el-form-item label="内部维修工">
+        <el-form-item label="内部维护人员">
           <el-select v-model="dispatchForm.assignee_emp_id" clearable filterable style="width: 100%">
             <el-option v-for="e in employees" :key="e.id" :label="empLabel(e)" :value="e.id" />
           </el-select>
@@ -91,7 +104,7 @@
             <el-option v-for="v in vendors" :key="v.id" :label="v.name" :value="v.id" />
           </el-select>
         </el-form-item>
-        <div class="muted">内部维修工与外部供应商至少填一个。</div>
+        <div class="muted">内部维护人员与外部供应商至少填一个。</div>
       </el-form>
       <template #footer>
         <el-button @click="dispatchVisible = false">取消</el-button>
@@ -154,9 +167,10 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, Refresh, Plus } from "@element-plus/icons-vue";
 import http from "../../api/client";
-import { repairStatusTag, REPAIR_URGENCY_LABELS } from "../../api/meta";
+import { REPAIR_URGENCY_LABELS } from "../../api/meta";
 import { auth } from "../../stores/auth";
 import { useIsMobile } from "../../composables/useIsMobile";
+import StatusChip from "../../components/StatusChip.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -194,7 +208,9 @@ const isReporter = computed(
 const isAssignee = computed(
   () => !!auth.user?.employee_id && auth.user?.employee_id === order.value?.assignee_emp_id,
 );
-const isAdmin = computed(() => auth.user?.role === "admin");
+// 多角色：用 auth.isAdmin（并集判定）而不是直接比 auth.user.role ——
+// 后者在「持有 admin 但主角色不是 admin」的账号上会判错（见 docs/多角色改造方案.md §2）。
+const isAdmin = computed(() => auth.isAdmin);
 const canDispatchPerm = computed(() => auth.can("repair.dispatch"));
 
 // 按钮可见性：与后端对象级鉴权口径保持一致（否则会出现「点得下去但 403」）
@@ -217,6 +233,21 @@ const canCancel = computed(() => {
   if (s === "accepted" || s === "dispatched") return canDispatchPerm.value || isAdmin.value;
   return false;
 });
+
+// 只读会话（经待办深链免登、后端收窄 rsc>0）：隐藏所有写入口，改为「登录后处理」。
+const readonly = computed(() => auth.readonly);
+// 「本来会有可执行动作」——只在只读但本应有按钮时才提示登录，避免对已完成单据无谓提示。
+const wouldHaveActions = computed(
+  () =>
+    canAccept.value ||
+    canReject.value ||
+    canDispatch.value ||
+    canTake.value ||
+    canFinish.value ||
+    canConfirm.value ||
+    canReturn.value ||
+    canCancel.value,
+);
 
 const remarkRequired = computed(() => remarkAction.value === "reject" || remarkAction.value === "return");
 const remarkTitle = computed(
@@ -272,7 +303,7 @@ function openDispatch() {
 async function submitDispatch() {
   const f = dispatchForm.value;
   if (!f.assignee_emp_id && !f.vendor_id) {
-    ElMessage.warning("请指派内部维修工或外部供应商");
+    ElMessage.warning("请指派内部维护人员或外部供应商");
     return;
   }
   dispatchVisible.value = false;
@@ -337,6 +368,14 @@ function back() {
   router.push({ name: "repairs" });
 }
 
+// 只读视图的「登录后处理」：先清掉收窄会话再进登录页，登录后回到同一张单。
+// ⚠️ 顺序不能反：router 守卫在 auth.token 非空时会把 login 弹回 home，不先 logout 就进不去登录页。
+function onRelogin() {
+  const dest = route.fullPath;
+  auth.logout();
+  router.push({ name: "login", query: { redirect: dest } });
+}
+
 onMounted(async () => {
   await load();
   // 派工对话框要用到的人员与供应商，按需加载，失败不拦页面
@@ -373,6 +412,10 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 16px;
+}
+
+.readonly-tip {
+  width: 100%;
 }
 
 .photos {

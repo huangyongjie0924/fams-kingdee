@@ -7,7 +7,7 @@
         <el-tag v-if="roleLabel" size="small" type="info">{{ roleLabel }}</el-tag>
         <span class="greet-date">{{ todayText }}</span>
       </div>
-      <!-- 报修是首页唯一的主操作；repair_tech 没有 repair.report，强行展示会点出 403 -->
+      <!-- 报修是首页唯一的主操作；maintainer 没有 repair.report，强行展示会点出 403 -->
       <el-button
         v-if="auth.can('repair.report')"
         class="greet-act"
@@ -113,6 +113,7 @@ import {
   type DashboardTodo,
 } from "../api/dashboard";
 import { auth } from "../stores/auth";
+import { canSeeRepair, repairEntry } from "../composables/useRepairEntry";
 
 const router = useRouter();
 
@@ -158,10 +159,11 @@ const todayText = computed(() => {
 });
 
 // —— 待办配色：紧急度由服务端给，前端只做「档位 → 颜色」这一层映射 ——
+// 色值改为引用令牌（语义色整体压暗，与全站一致），不再硬编码 EP 的高饱和色。
 const LEVEL_COLOR: Record<string, string> = {
-  danger: "#f56c6c",
-  warning: "#e6a23c",
-  info: "#409eff",
+  danger: "var(--danger)",
+  warning: "var(--warn)",
+  info: "var(--info)",
 };
 
 function levelOf(t: DashboardTodo): string {
@@ -171,7 +173,7 @@ function levelOf(t: DashboardTodo): string {
 
 // 0 的项仍然显示（让用户知道「这类事现在是 0」），但灰掉，不再抢紧急度的色。
 function rowStyle(t: DashboardTodo): Record<string, string> {
-  return { "--lv": t.count > 0 ? LEVEL_COLOR[levelOf(t)] : "#c0c4cc" };
+  return { "--lv": t.count > 0 ? LEVEL_COLOR[levelOf(t)] : "var(--steel-300)" };
 }
 
 // —— 快速动作 ——
@@ -182,28 +184,8 @@ interface QuickAction {
   icon: Component;
 }
 
-// 流程入口的显隐，沿用 SideMenu.vue 的 auth.can 风格。
+// 流程入口的显隐，与侧栏共用同一份判断（composables/useRepairEntry.ts）。
 // 注意：只在这里做「区块/入口级」判断；待办项与指标卡本身不按角色过滤——给什么由服务端决定。
-const canSeeRepair = computed(
-  () =>
-    auth.can("repair.report") ||
-    auth.can("repair.handle") ||
-    auth.can("repair.dispatch") ||
-    auth.can("repair.approve") ||
-    auth.can("repair.manage"),
-);
-
-// 维修单入口落在哪张列表，按权限选「看得见且有内容」的那张，与侧边菜单保持一致。
-const repairEntry = computed<{ label: string; path: string }>(() => {
-  if (auth.can("repair.dispatch") || auth.can("repair.manage")) {
-    return { label: "维修管理", path: "/repairs" };
-  }
-  if (auth.can("repair.handle")) {
-    return { label: "我的维修", path: "/repairs?mine=1" };
-  }
-  return { label: "我的报修", path: "/repairs/mine" };
-});
-
 const quickActions = computed<QuickAction[]>(() => {
   const list: QuickAction[] = [];
   if (auth.can("repair.report")) {
@@ -212,7 +194,12 @@ const quickActions = computed<QuickAction[]>(() => {
   // 资产列表对所有角色可见，与侧边菜单一致，不加权限门。
   list.push({ key: "assets", label: "资产列表", path: "/assets", icon: Tickets });
   if (canSeeRepair.value) {
-    list.push({ key: "repairs", label: repairEntry.value.label, path: repairEntry.value.path, icon: Tools });
+    list.push({
+      key: "repairs",
+      label: repairEntry.value.label,
+      path: repairEntry.value.path,
+      icon: Tools,
+    });
   }
   if (auth.can("sync.manage")) {
     list.push({ key: "sync", label: "金蝶同步", path: "/sync", icon: Refresh });
@@ -271,19 +258,23 @@ onMounted(load);
 
 .block-title {
   flex: 1;
-  font-size: 16px;
+  font-size: var(--t-16);
   font-weight: 600;
+  color: var(--ink);
 }
 
-/* —— 1. 问候条 —— */
+/* —— 1. 问候条 ——
+   改为石墨黑底：它是本页的视觉锚点，也是唯一承载「报修」这个黄底主按钮的地方。
+   白底 + 黄按钮的组合会让黄按钮失去「全屏唯一强调」的地位。 */
 .greet {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px 18px;
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
+  background: var(--ink);
+  border: none;
+  border-left: 3px solid var(--signal);
+  border-radius: var(--r);
 }
 
 .greet-main {
@@ -296,14 +287,27 @@ onMounted(load);
 }
 
 .greet-hi {
-  font-size: 18px;
+  font-size: var(--t-20);
   font-weight: 600;
-  color: #303133;
+  color: #fff;
 }
 
 .greet-date {
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--t-13);
+  color: var(--steel-400);
+}
+
+/* 石墨黑底上，主按钮必须是黄底黑字（9.7:1），沿用登录页的动作反馈配方 */
+.greet-act {
+  --el-button-bg-color: var(--signal);
+  --el-button-border-color: var(--signal);
+  --el-button-text-color: var(--ink);
+  --el-button-hover-bg-color: #fff;
+  --el-button-hover-border-color: #fff;
+  --el-button-hover-text-color: var(--ink);
+  --el-button-active-bg-color: var(--signal-d);
+  --el-button-active-border-color: var(--signal-d);
+  --el-button-active-text-color: var(--ink);
 }
 
 /* —— 2. 待我处理：横向列表，一屏看得完 —— */
@@ -318,17 +322,18 @@ onMounted(load);
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px 12px 20px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background: #fff;
+  padding: 12px 14px 12px 18px;
+  border: var(--hairline);
+  border-radius: var(--r);
+  background: var(--surface);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.1s;
+  transition: border-color 0.2s, background-color 0.2s, transform 0.1s;
 }
 
+/* 卡片不再用投影表达层级（方案 §4.3）：hover 只换描边与底色 */
 .todo-row:hover {
   border-color: var(--lv);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  background: var(--steel-100);
 }
 
 .todo-row:active {
@@ -346,14 +351,18 @@ onMounted(load);
   left: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
+  width: 3px;
   background: var(--lv);
-  border-radius: 8px 0 0 8px;
+  border-radius: var(--r) 0 0 var(--r);
 }
 
+/* 数字等宽右对齐：多行竖着看时数位能对齐 */
 .todo-count {
-  flex: 0 0 56px;
-  font-size: 26px;
+  flex: 0 0 64px;
+  font-family: var(--u-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: var(--t-24);
   font-weight: 700;
   line-height: 1.1;
   color: var(--lv);
@@ -362,18 +371,18 @@ onMounted(load);
 .todo-label {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
-  color: #303133;
+  font-size: var(--t-14);
+  color: var(--ink);
 }
 
 .todo-arrow {
   flex: 0 0 auto;
-  color: #c0c4cc;
+  color: var(--steel-300);
 }
 
 /* count 为 0：--lv 已在 rowStyle 里降成灰，这里只把底色压暗 */
 .todo-row.is-zero {
-  background: #fafafa;
+  background: var(--paper);
 }
 
 /* —— 3. 指标卡 —— */
@@ -385,34 +394,39 @@ onMounted(load);
 
 .stat-item {
   padding: 14px 16px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background: #f5f7fa;
+  border: var(--hairline);
+  border-radius: var(--r);
+  background: var(--steel-100);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
 .stat-item:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 10px rgba(64, 158, 255, 0.12);
+  border-color: var(--signal);
+  background: var(--surface);
 }
 
 .stat-item:focus-visible {
-  outline: 2px solid #409eff;
+  outline: 2px solid var(--signal);
   outline-offset: 1px;
 }
 
+/* 工作台大数：等宽 + 右对齐（方案 §4.2 的等宽适用范围） */
 .stat-count {
-  font-size: 24px;
+  font-family: var(--u-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: var(--t-32);
   font-weight: 700;
-  line-height: 1.2;
-  color: #303133;
+  line-height: 1.15;
+  color: var(--ink);
 }
 
 .stat-label {
   margin-top: 2px;
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--t-13);
+  color: var(--steel-600);
+  text-align: right;
 }
 
 /* —— 4. 快速动作 —— */
@@ -429,16 +443,16 @@ onMounted(load);
   justify-content: center;
   gap: 6px;
   padding: 16px 8px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background: #fff;
+  border: var(--hairline);
+  border-radius: var(--r);
+  background: var(--surface);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.1s;
+  transition: border-color 0.2s, background-color 0.2s, transform 0.1s;
 }
 
 .quick-item:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 10px rgba(64, 158, 255, 0.12);
+  border-color: var(--signal);
+  background: var(--steel-100);
 }
 
 .quick-item:active {
@@ -446,22 +460,23 @@ onMounted(load);
 }
 
 .quick-item:focus-visible {
-  outline: 2px solid #409eff;
+  outline: 2px solid var(--signal);
   outline-offset: 1px;
 }
 
 .quick-icon {
   font-size: 22px;
-  color: #409eff;
+  color: var(--steel-700);
 }
 
 .quick-label {
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--t-13);
+  color: var(--steel-700);
 }
 
+.quick-item:hover .quick-icon,
 .quick-item:hover .quick-label {
-  color: #409eff;
+  color: var(--ink);
 }
 
 @media (max-width: 767px), (max-height: 520px) {

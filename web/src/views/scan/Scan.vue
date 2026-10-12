@@ -10,7 +10,14 @@
 
       <div class="stage">
         <video ref="video" class="cam" playsinline muted autoplay />
-        <div v-if="state === 'running'" class="frame" />
+        <!-- 取景框：四角 crop marks + 信号黄扫描线，与登录页的制图角标同一语汇 -->
+        <div v-if="state === 'running'" class="frame" :class="{ 'is-hit': !!hitCode }">
+          <span class="crop tl" aria-hidden="true" />
+          <span class="crop tr" aria-hidden="true" />
+          <span class="crop bl" aria-hidden="true" />
+          <span class="crop br" aria-hidden="true" />
+          <span class="scanline" aria-hidden="true" />
+        </div>
         <div v-if="state === 'starting'" class="mask">
           <el-icon class="is-loading"><Loading /></el-icon>
           <span>正在启动摄像头…</span>
@@ -19,6 +26,29 @@
       </div>
 
       <el-alert v-if="hint" class="hint" type="warning" :closable="false" show-icon :title="hint" />
+
+      <!-- 识别结果 / 最近识别：盘点时用户会连着扫几十台，能回看刚扫了什么可以少重复劳动。
+         左侧 3px 色条承载语义：绿=刚刚识别成功，灰=历史记录。 -->
+      <div v-if="recent.length" class="recent">
+        <div class="recent-hd">
+          <span class="recent-title">最近识别</span>
+          <span class="spacer" />
+          <el-button text size="small" @click="clearRecent">清空</el-button>
+        </div>
+        <div
+          v-for="(r, i) in recent"
+          :key="r.code + r.at"
+          class="recent-row"
+          :class="i === 0 && r.ok ? 'is-fresh' : 'is-old'"
+          role="button"
+          tabindex="0"
+          @click="go(r.code)"
+          @keyup.enter="go(r.code)"
+        >
+          <span class="recent-code u-mono">{{ r.code }}</span>
+          <span class="recent-at u-mono">{{ formatAt(r.at) }}</span>
+        </div>
+      </div>
 
       <div class="fallback">
         <div class="row">
@@ -41,7 +71,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ArrowLeft, Camera, Loading } from "@element-plus/icons-vue";
 import jsQR from "jsqr";
@@ -49,16 +79,25 @@ import { extractAssetCode } from "../../utils/qr";
 
 // 取景解码：先降到 480px 宽再取像素，满帧解码会让中端安卓持续满载。
 // 限到约 8fps 同理 —— 人手持扫码不需要 30fps 的识别频率。
+// ⚠️ 这三个常数是为低端手机调过的，视觉改造**不得调整**。
 const SCAN_W = 480;
 const FRAME_MS = 125;
 const PHOTO_MAX = 1000;
 
+// 识别成功后停顿一下再跳转，让用户看到「扫到了」的确认。220ms 是能感知又不拖沓的量级。
+const HIT_HOLD_MS = 220;
+const RECENT_KEY = "scan_recent";
+const RECENT_MAX = 10;
+
 const router = useRouter();
+const route = useRoute();
 const video = ref<HTMLVideoElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const state = ref<"idle" | "starting" | "running" | "error">("idle");
 const hint = ref("");
 const manual = ref("");
+const hitCode = ref("");
+const recent = ref<{ code: string; ok: boolean; at: number }[]>([]);
 
 const canvas = document.createElement("canvas");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -68,6 +107,7 @@ let rafId = 0;
 let lastScan = 0;
 let handled = false;
 let lastMiss = 0;
+let gone = false;
 
 // 探测阶梯：不要笼统报「摄像头不可用」，三种环境的失败原因和解法完全不同。
 const blocked = computed(() => {
@@ -79,6 +119,37 @@ const blocked = computed(() => {
   }
   return "";
 });
+
+// —— 最近识别：存 sessionStorage，扫完跳走再回来还能看到刚扫过什么 ——
+function loadRecent() {
+  try {
+    const raw = sessionStorage.getItem(RECENT_KEY);
+    recent.value = raw ? JSON.parse(raw) : [];
+  } catch {
+    recent.value = [];
+  }
+}
+
+function pushRecent(code: string) {
+  const list = [{ code, ok: true, at: Date.now() }, ...recent.value.filter((r) => r.code !== code)];
+  recent.value = list.slice(0, RECENT_MAX);
+  try {
+    sessionStorage.setItem(RECENT_KEY, JSON.stringify(recent.value));
+  } catch {
+    // 隐私模式下写不进去也不影响扫码本身，忽略
+  }
+}
+
+function clearRecent() {
+  recent.value = [];
+  sessionStorage.removeItem(RECENT_KEY);
+}
+
+function formatAt(t: number) {
+  const d = new Date(t);
+  const p = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 
 function stop() {
   cancelAnimationFrame(rafId);
@@ -158,13 +229,23 @@ function onHit(payload: string) {
     return;
   }
   handled = true;
-  go(code);
+  // 先停解码再闪一下：否则这 220ms 里每 125ms 还会再命中一次
+  stop();
+  hitCode.value = code;
+  pushRecent(code);
+  window.setTimeout(() => {
+    // 用户在这 220ms 里自己点了返回，就不要再把人拽走
+    if (!gone) go(code);
+  }, HIT_HOLD_MS);
 }
 
 function go(code: string) {
   stop();
-  // 复用列表页那一条 asset_code 深链通路，只留一套解析实现，URL 也能分享
-  router.replace({ name: "assets", query: { asset_code: code } });
+  // 复用列表页那一条 asset_code 深链通路，只留一套解析实现，URL 也能分享。
+  // to 由来源页指定（报修页带 to=repair-new），没带就保持原来回资产列表的行为。
+  const raw = route.query.to;
+  const to = (Array.isArray(raw) ? raw[0] : raw) || "assets";
+  router.replace({ name: to, query: { asset_code: code } });
 }
 
 function pickPhoto() {
@@ -241,11 +322,16 @@ function back() {
 }
 
 onMounted(() => {
+  gone = false;
   handled = false;
+  loadRecent();
   start();
 });
 
-onBeforeUnmount(stop);
+onBeforeUnmount(() => {
+  gone = true;
+  stop();
+});
 </script>
 
 <style scoped>
@@ -254,8 +340,9 @@ onBeforeUnmount(stop);
 }
 
 .title {
-  font-size: 16px;
+  font-size: var(--t-20);
   font-weight: 600;
+  color: var(--ink);
 }
 
 .stage {
@@ -263,7 +350,7 @@ onBeforeUnmount(stop);
   width: 100%;
   aspect-ratio: 4 / 3;
   background: #111;
-  border-radius: 6px;
+  border-radius: var(--r);
   overflow: hidden;
 }
 
@@ -274,6 +361,8 @@ onBeforeUnmount(stop);
   display: block;
 }
 
+/* 取景框：只保留四角制图角标（crop marks）+ 扫描线，去掉原来的绿色实线方框。
+   实线框在深色取景里过重，四角角标同样能框住取景区，且与登录页语汇一致。 */
 .frame {
   position: absolute;
   left: 50%;
@@ -281,10 +370,71 @@ onBeforeUnmount(stop);
   width: 62%;
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  border: 2px solid #67c23a;
-  border-radius: 8px;
   box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
   pointer-events: none;
+}
+
+.crop {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--signal);
+}
+
+.crop.tl {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+}
+
+.crop.tr {
+  top: 0;
+  right: 0;
+  border-left: none;
+  border-bottom: none;
+}
+
+.crop.bl {
+  bottom: 0;
+  left: 0;
+  border-right: none;
+  border-top: none;
+}
+
+.crop.br {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+}
+
+.scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--signal);
+  box-shadow: 0 0 10px rgba(245, 179, 1, .85);
+  animation: scan-move 2.2s ease-in-out infinite;
+}
+
+@keyframes scan-move {
+  0%,
+  100% {
+    top: 4%;
+  }
+  50% {
+    top: 96%;
+  }
+}
+
+/* 识别成功：信号黄闪一下，给「扫到了」的确认 */
+.frame.is-hit::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(245, 179, 1, .3);
 }
 
 .mask {
@@ -295,11 +445,66 @@ onBeforeUnmount(stop);
   justify-content: center;
   gap: 8px;
   color: #dcdfe6;
-  font-size: 14px;
+  font-size: var(--t-14);
 }
 
 .hint {
   margin-top: 12px;
+}
+
+/* —— 最近识别 —— */
+.recent {
+  margin-top: 16px;
+}
+
+.recent-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.recent-title {
+  font-size: var(--t-13);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 12px;
+  margin-bottom: 6px;
+  background: var(--surface);
+  border: var(--hairline);
+  border-left-width: 3px;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+
+.recent-row.is-fresh {
+  border-left-color: var(--ok);
+  background: #f2f8f4;
+}
+
+.recent-row.is-old {
+  border-left-color: var(--steel-300);
+}
+
+.recent-code {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-at {
+  flex: 0 0 auto;
+  font-size: var(--t-11);
+  color: var(--steel-500);
 }
 
 .fallback {
@@ -319,17 +524,25 @@ onBeforeUnmount(stop);
 .lb {
   width: 72px;
   flex: none;
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--t-13);
+  color: var(--steel-700);
 }
 
 .tip {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--t-12);
+  color: var(--steel-500);
 }
 
 .file {
   display: none;
+}
+
+/* 尊重系统的「减少动态效果」设置 */
+@media (prefers-reduced-motion: reduce) {
+  .scanline {
+    animation: none;
+    top: 50%;
+  }
 }
 
 @media (max-width: 767px), (max-height: 520px) {

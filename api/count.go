@@ -10,6 +10,32 @@ import (
 	"asset-mgr/store"
 )
 
+// countRestrictToSelf 判断盘点相关的写/读是否**只允许本人名下**的行。
+//
+// 原语义（单角色）：盘点员受限，admin / 资产管理员可代录任意行。
+// 多角色（一人可多角色，2026-09-24）下按**并集**推广：「不限」吃掉受限维度 ——
+// [盘点员, 资产管理员] 应按资产管理员处理，否则并集语义在盘点模块就不成立了。
+// 与 api/scope.go 的 assetScope 同一口径（那里靠 EffectiveRoles 的声明顺序让 default 先命中）。
+//
+// 判别用权限位 count.manage 而不是角色名：本仓库既有惯例（对照 api/repair.go 的
+// canManageRepair 用 repair.dispatch），将来新增能代录的角色不必回来改这里。
+//
+// ⚠️ 空角色集合必须 fail-closed（按「受限」处理），不能返回 false。
+// 返回 false 的语义是「不限本人」；而 handleListCountItems（count.go 的 GET 列表）的路由
+// **没有挂 requirePerm**（本仓库约定：读接口不门控，范围在数据行上做），空角色时
+// q.AssigneeID 会保持 0 ⇒ **看全量盘点明细**。这与 api/scope.go 被修的 fail-open 是同一个坑：
+// 「解析不出角色」绝不等于「给你全部数据」。按受限处理后，未绑定员工的账号会走既有的 403。
+func countRestrictToSelf(me model.User) bool {
+	roles := me.EffectiveRoles()
+	if len(roles) == 0 {
+		return true
+	}
+	if !model.HasRole(roles, model.RoleCounter) {
+		return false
+	}
+	return !model.CanAny(roles, model.PermCountManage)
+}
+
 func queryInt(r *http.Request, key string, def int) int {
 	v := r.URL.Query().Get(key)
 	if v == "" {
@@ -204,9 +230,9 @@ func (s *Server) handleSubmitResults(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// 盘点员只能录自己名下的行；管理员/资产管理员可代录任意行
+	// 盘点员只能录自己名下的行；管理员/资产管理员可代录任意行（多角色见 countRestrictToSelf）
 	restrict := int64(0)
-	if me.Role == model.RoleCounter {
+	if countRestrictToSelf(me) {
 		if me.EmployeeID == 0 {
 			writeErr(w, http.StatusForbidden, "当前账号未绑定员工，无法盘点")
 			return
@@ -271,7 +297,7 @@ func (s *Server) handleListCountItems(w http.ResponseWriter, r *http.Request) {
 		Result:  r.URL.Query().Get("result"),
 		Keyword: r.URL.Query().Get("keyword"),
 	}
-	if r.URL.Query().Get("mine") == "1" || me.Role == model.RoleCounter {
+	if r.URL.Query().Get("mine") == "1" || countRestrictToSelf(me) {
 		if me.EmployeeID == 0 {
 			writeErr(w, http.StatusForbidden, "当前账号未绑定员工，无法盘点")
 			return

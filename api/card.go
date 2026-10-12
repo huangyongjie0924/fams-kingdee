@@ -36,6 +36,17 @@ func parseListQuery(r *http.Request) model.ListQuery {
 		}
 	}
 	q.CategoryID = atoi64(v.Get("category_id"))
+	// repairable 同时接受 1/true 与 0/false（与 sort_desc 同一套写法）；
+	// 参数缺失或空串一律当「不筛选」，绝不默认成 false —— 否则 GET /api/assets
+	// 会被静默收窄成「只要不可维修的」，那是数据范围的破坏性变更。
+	switch v.Get("repairable") {
+	case "1", "true":
+		t := true
+		q.Repairable = &t
+	case "0", "false":
+		f := false
+		q.Repairable = &f
+	}
 	q.AreaID = atoi64(v.Get("area_id"))
 	q.UseDeptID = atoi64(v.Get("use_dept_id"))
 	q.UseCompanyID = atoi64(v.Get("use_company_id"))

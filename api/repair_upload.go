@@ -27,7 +27,7 @@ func (s *Server) handleRepairUpload(w http.ResponseWriter, r *http.Request) {
 	cardID := atoi64(r.FormValue("card_id"))
 
 	if repairID > 0 {
-		// 挂到已有单据：报修人 / 该单指派维修工 / 管理员才有权上传
+		// 挂到已有单据：报修人 / 该单指派维护人员 / 管理员才有权上传
 		o, err := s.st.GetRepair(repairID)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "查询维修单失败")
@@ -37,7 +37,7 @@ func (s *Server) handleRepairUpload(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "维修单不存在")
 			return
 		}
-		if !isRepairReporter(me, o) && !isRepairAssignee(me, o) && !canManageRepair(me.Role) {
+		if !isRepairReporter(me, o) && !isRepairAssignee(me, o) && !canManageRepair(me) {
 			writeErr(w, http.StatusForbidden, "无权给该维修单上传附件")
 			return
 		}

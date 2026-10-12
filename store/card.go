@@ -55,18 +55,49 @@ var sortColumns = map[string]string{
 // 首页聚合（store/dashboard.go）与资产列表共用本函数，正是为了杜绝
 // 「列表的 scope 与首页的 scope 各写一份、随时间分叉」。
 // 零值 scope 只返回软删条件，admin 的 SQL 与从前逐字节一致。
+// 单维度 scope 也只返回单条条件，与从前逐字节一致——**只有两个及以上维度同时非零**（多角色）
+// 才产出 `(A OR B [OR C])` 这一种新形态，把改动面压到最小。
+//
+// 三维口径（2026-09-24 员工可见范围）：self（自己在用的）/ dept（管辖部门的）/
+// repairing（有未结单维修单的，不限报修人——见 model.AssetScope.RepairingCardIDs）。
+// 三维取**并集**，命中任一维度即可见，口径与 model.AssetScope.Allows 一致。
 func scopeConds(sc model.AssetScope) (conds []string, args []any) {
 	conds = []string{"c.deleted_at IS NULL"}
 	args = []any{}
+
+	// parts 的追加顺序必须与 args 完全一致：self → dept → repairing。
+	// ⚠️ 顺序错了会把参数错位绑定（比 SQL 形态错更隐蔽）。
+	parts := []string{}
 	if sc.SelfEmpID > 0 {
-		conds = append(conds, "c.user_emp_id = ?")
+		parts = append(parts, "c.user_emp_id = ?")
 		args = append(args, sc.SelfEmpID)
 	}
 	if len(sc.DeptIDs) > 0 {
-		conds = append(conds, "c.use_dept_id IN ("+placeholders(len(sc.DeptIDs))+")")
+		parts = append(parts, "c.use_dept_id IN ("+placeholders(len(sc.DeptIDs))+")")
+		// []int64 不能直接展开进 []any，逐个追加。
 		for _, id := range sc.DeptIDs {
 			args = append(args, id)
 		}
+	}
+	if len(sc.RepairingCardIDs) > 0 {
+		parts = append(parts, "c.id IN ("+placeholders(len(sc.RepairingCardIDs))+")")
+		for _, id := range sc.RepairingCardIDs {
+			args = append(args, id)
+		}
+	}
+
+	// 多角色（一人可多角色）下多个维度会**同时非零**（如 [部门负责人, 员工]），
+	// 此时必须取**并集**：命中任一维度即可见。
+	// ⚠️ 早期实现是「各自 append、由 buildWhere 用 AND 拼」——那是**交集**，
+	// 部门负责人兼员工会几乎看不到本部门资产。单角色时只会有一个维度非零，
+	// 所以只有多角色才暴露。零值 / 单维度的产出必须与改动前逐字节一致。
+	switch len(parts) {
+	case 0:
+		// 不限：只有软删条件（与从前逐字节一致）。
+	case 1:
+		conds = append(conds, parts[0])
+	default:
+		conds = append(conds, "("+strings.Join(parts, " OR ")+")")
 	}
 	return conds, args
 }
@@ -150,6 +181,14 @@ func buildWhere(q model.ListQuery, sc model.AssetScope) (string, []any) {
 		conds = append(conds, "c.amount <= ?")
 		args = append(args, *q.AmountMax)
 	}
+	if q.Repairable != nil {
+		// 取自 cat（asset_category），写 COALESCE 与 cardSelect 带出的
+		// CategoryRepairable 同口径：LEFT JOIN 未匹配 / category_id 哨兵值 0 时按「不可维修」算，
+		// 否则 repairable=0 会漏掉这些卡，却又在列表里显示成不可维修。
+		// ⚠️ 调用方 SQL 必须 LEFT JOIN asset_category cat（cardSelect 与 ListCards 的 countSQL 均已 JOIN）。
+		conds = append(conds, "COALESCE(cat.repairable, 0) = ?")
+		args = append(args, *q.Repairable)
+	}
 	return " WHERE " + strings.Join(conds, " AND "), args
 }
 
@@ -163,8 +202,10 @@ func (s *Store) ListCards(q model.ListQuery, sc model.AssetScope) (*model.ListRe
 	var total int64
 	var amountTotal sql.NullFloat64
 	// 这里必须和 cardSelect 的 JOIN 对齐：buildWhere 会引用 ue.name / ud.name（关键词、使用人、使用部门），
-	// 少一个 JOIN 就是整条 SQL 报 unknown column。三张表都按主键关联，不会放大 COUNT。
+	// 以及 cat.repairable（repairable 筛选），少一个 JOIN 就是整条 SQL 报 unknown column。
+	// 四张表都按主键关联，不会放大 COUNT。
 	countSQL := `SELECT COUNT(*), COALESCE(SUM(c.amount),0) FROM asset_card c
+		LEFT JOIN asset_category cat ON cat.id = c.category_id
 		LEFT JOIN employee me ON me.id = c.manager_emp_id
 		LEFT JOIN employee ue ON ue.id = c.user_emp_id
 		LEFT JOIN department ud ON ud.id = c.use_dept_id` + where

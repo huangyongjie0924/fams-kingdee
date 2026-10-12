@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 // —— 对象级鉴权小工具 ——
 //
 // 路由上的 requirePerm 只回答「这个角色能不能做这类动作」；能不能动**这一张单**
-// 还得看当事人（报修人 / 被指派维修工）。这一层堵住 IDOR。
+// 还得看当事人（报修人 / 被指派维护人员）。这一层堵住 IDOR。
 
 func isRepairReporter(u model.User, o *model.RepairOrder) bool {
 	return u.EmployeeID > 0 && u.EmployeeID == o.ReporterEmpID
@@ -22,9 +23,10 @@ func isRepairAssignee(u model.User, o *model.RepairOrder) bool {
 	return u.EmployeeID > 0 && u.EmployeeID == o.AssigneeEmpID
 }
 
-// canManageRepair：admin 恒真；其余看 repair.dispatch（asset_manager）。
-func canManageRepair(role string) bool {
-	return model.Can(role, model.PermRepairDispatch)
+// canManageRepair：任一角色持有 repair.dispatch（asset_manager）即放行；admin 恒真。
+// 多角色（一人可多角色）下按并集判定，故入参是整个 User 而非单个 role。
+func canManageRepair(u model.User) bool {
+	return model.CanAny(u.EffectiveRoles(), model.PermRepairDispatch)
 }
 
 // parseRepairQuery 解析维修单列表的查询串。
@@ -150,6 +152,11 @@ func (s *Server) handleCreateRepair(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "提交报修失败："+err.Error())
 		return
 	}
+	// 挂载点一（§3.2 #1）：事务已提交后、写响应前投递待办通知。
+	// 异步投递，绝不等外部调用，失败不回滚业务（失败隔离，§7）。
+	if s.notify != nil {
+		s.notify.OnRepairCreated(order)
+	}
 	writeJSON(w, http.StatusOK, order)
 }
 
@@ -167,14 +174,14 @@ func (s *Server) handleListRepairs(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// mine=1：强制只看「与我相关」。维修工 = 派给我的；其余 = 我提交的。
+	// mine=1：强制只看「与我相关」。维护人员 = 派给我的；其余 = 我提交的。
 	if r.URL.Query().Get("mine") == "1" {
 		me := userFrom(r)
 		if me.EmployeeID == 0 {
 			writeErr(w, http.StatusForbidden, "当前账号未绑定员工，无法查看我的单据")
 			return
 		}
-		if me.Role == model.RoleRepairTech {
+		if model.HasRole(me.EffectiveRoles(), model.RoleMaintainer) {
 			sc = model.RepairScope{AssigneeEmpID: me.EmployeeID}
 		} else {
 			sc = model.RepairScope{ReporterEmpID: me.EmployeeID}
@@ -202,6 +209,18 @@ func (s *Server) loadRepairInScope(w http.ResponseWriter, r *http.Request) (*mod
 	}
 	if o == nil {
 		writeErr(w, http.StatusNotFound, "维修单不存在")
+		return nil, false
+	}
+	// 单据收窄的**对象级**校验（§5.4 缺陷 2）：深链免登会话（rsc>0）只允许看它绑定的那一张单。
+	//
+	// 中间件 deeplinkScopeAllows 已经按**路径字符串**拦过一遍，这里再按**实际取到的行**拦一遍。
+	// 两处独立实现是刻意的、也是必要的：中间件靠解析 URL 里的 {id}，本处靠行本身的 ID。
+	// 一旦将来路由形态变化（别名、大小写、尾斜杠、编码、或新增一条也能取到维修单的路由）
+	// 导致两边解析口径出现分歧，只靠路径那层就可能漏；对象级这层不依赖任何解析，仍然能挡住。
+	// 放在 s.repairScope 之前：既省掉一次可能查库的范围解析，也让拒绝原因更准确。
+	if sc := repairScopeFrom(r); sc > 0 && o.ID != sc {
+		log.Printf("deeplink 收窄会话越权读取被拦：rsc=%d 目标单据 id=%d path=%s", sc, o.ID, r.URL.Path)
+		writeErr(w, http.StatusForbidden, "免登会话仅可查看该维修单")
 		return nil, false
 	}
 	sc, ok := s.repairScope(w, r)
@@ -281,6 +300,16 @@ func (s *Server) doRepairTransition(w http.ResponseWriter, r *http.Request, o *m
 		writeStoreErr(w, err, "维修单不存在")
 		return
 	}
+	// 挂载点二（§3.2 #2–#9）：事务已提交后、writeJSON 之前投递待办通知。
+	// 异步投递，绝不等外部调用，失败不回滚业务（失败隔离，§7）。
+	//
+	// 第 4 个入参传 **跃迁前状态 `o.Status`**（注意是入参 o，不是返回值 updated）：
+	// cancel 分支靠它区分「报修人撤单（pending）」与「管理员取消（accepted/dispatched）」
+	// （产品定义行 10 / 行 11，两者 action 都是 cancel）。store.Transition 不改写入参 o，
+	// 它内部另查 cur 并返回 updated，故此处 o.Status 仍是跃迁前状态。
+	if s.notify != nil {
+		s.notify.OnRepairTransition(updated, action, in.Remark, o.Status)
+	}
 	writeJSON(w, http.StatusOK, updated)
 }
 
@@ -345,18 +374,18 @@ func (s *Server) handleDispatchRepair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.AssigneeEmpID <= 0 && req.VendorID <= 0 {
-		writeErr(w, http.StatusBadRequest, "请指派内部维修工或外部维保供应商")
+		writeErr(w, http.StatusBadRequest, "请指派内部维护人员或外部维保供应商")
 		return
 	}
 	assigneeName := ""
 	if req.AssigneeEmpID > 0 {
 		name, err := s.st.EmployeeName(req.AssigneeEmpID)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "查询维修工失败")
+			writeErr(w, http.StatusInternalServerError, "查询维护人员失败")
 			return
 		}
 		if name == "" {
-			writeErr(w, http.StatusBadRequest, "指定的维修工不存在")
+			writeErr(w, http.StatusBadRequest, "指定的维护人员不存在")
 			return
 		}
 		assigneeName = name
@@ -389,8 +418,8 @@ func (s *Server) handleTakeRepair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := userFrom(r)
-	if !isRepairAssignee(me, o) && me.Role != model.RoleAdmin {
-		writeErr(w, http.StatusForbidden, "只有被指派的维修工可以接单")
+	if !isRepairAssignee(me, o) && !model.HasRole(me.EffectiveRoles(), model.RoleAdmin) {
+		writeErr(w, http.StatusForbidden, "只有被指派的维护人员可以接单")
 		return
 	}
 	s.doRepairTransition(w, r, o, model.RepairActionTake, store.RepairTransitionInput{})
@@ -402,8 +431,8 @@ func (s *Server) handleFinishRepair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := userFrom(r)
-	if !isRepairAssignee(me, o) && me.Role != model.RoleAdmin {
-		writeErr(w, http.StatusForbidden, "只有被指派的维修工可以报完工")
+	if !isRepairAssignee(me, o) && !model.HasRole(me.EffectiveRoles(), model.RoleAdmin) {
+		writeErr(w, http.StatusForbidden, "只有被指派的维护人员可以报完工")
 		return
 	}
 	var req repairActionReq
@@ -428,7 +457,7 @@ func (s *Server) handleConfirmRepair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := userFrom(r)
-	if !isRepairReporter(me, o) && !canManageRepair(me.Role) {
+	if !isRepairReporter(me, o) && !canManageRepair(me) {
 		writeErr(w, http.StatusForbidden, "只有报修人（或管理员）可以确认完工")
 		return
 	}
@@ -441,7 +470,7 @@ func (s *Server) handleReturnRepair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := userFrom(r)
-	if !isRepairReporter(me, o) && !canManageRepair(me.Role) {
+	if !isRepairReporter(me, o) && !canManageRepair(me) {
 		writeErr(w, http.StatusForbidden, "只有报修人（或管理员）可以退回")
 		return
 	}
@@ -466,11 +495,11 @@ func (s *Server) handleCancelRepair(w http.ResponseWriter, r *http.Request) {
 	me := userFrom(r)
 	// 待受理由报修人自己撤单；已受理 / 已派工只能由管理员取消
 	if o.Status == model.RepairPending {
-		if !isRepairReporter(me, o) && !canManageRepair(me.Role) {
+		if !isRepairReporter(me, o) && !canManageRepair(me) {
 			writeErr(w, http.StatusForbidden, "只有报修人（或管理员）可以撤单")
 			return
 		}
-	} else if !canManageRepair(me.Role) {
+	} else if !canManageRepair(me) {
 		writeErr(w, http.StatusForbidden, "受理后只能由管理员取消")
 		return
 	}
@@ -505,4 +534,58 @@ func (s *Server) handleRepairCost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// repairDeleteReq 是批量删除维修单的请求体。
+type repairDeleteReq struct {
+	IDs []int64 `json:"ids"`
+}
+
+// handleDeleteRepairs 批量**物理删除**维修单（仅 admin，见路由上的 requireAdmin）。
+//
+// 为什么只有 admin：这是全项目唯一的「物理删除业务单据」入口，不可恢复。走 requirePerm 不行 ——
+// 那是「角色→权限位」的可配置表，将来给 asset_manager 加一个权限位就会顺带获得删除权；
+// 而物理删除只应属于超级管理员。
+//
+// 为什么只有部分状态：白名单的唯一真相在 model.RepairDeletableStatuses（当前 = 待受理 + 已撤单）。
+// 判定标准是「这张单是否还挂着未兑现的外部承诺」，理由见 store.DeleteRepairOrders 的注释。
+//
+// 为什么这里没有对象级鉴权：能走到这里的账号必然是 admin，admin 的可见范围本就不受限，
+// 不需要再判「这张单是不是他的」。
+func (s *Server) handleDeleteRepairs(w http.ResponseWriter, r *http.Request) {
+	var req repairDeleteReq
+	if err := readJSON(w, r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	orders, err := s.st.DeleteRepairOrders(req.IDs)
+	if err != nil {
+		// 业务性拒绝（状态不在白名单 / 不存在 / 空 ids / 超量）由 writeStoreErr 映射成 400；
+		// 只有 sql.ErrNoRows 会被映射成 404，本函数不会返回它。
+		writeStoreErr(w, err, "维修单不存在")
+		return
+	}
+
+	// 挂载点三：事务已提交后再清理云之家侧待办。单据已不存在，云之家若还留着待办，
+	// 用户点进去就是 404 深链 —— 所以这一步不是可选项。外部调用失败只记日志、不回滚已删数据。
+	codes := make([]string, 0, len(orders))
+	for _, o := range orders {
+		codes = append(codes, o.Code)
+		if s.notify != nil {
+			s.notify.OnRepairDeleted(o)
+		}
+	}
+	// 物理删除不留库内痕迹，至少要在应用日志里留一条「谁删了什么」。
+	// 逐单记状态：白名单现在是两种状态，只记单号会让事后审计看不出删的是哪一类。
+	detail := make([]string, 0, len(orders))
+	for _, o := range orders {
+		detail = append(detail, fmt.Sprintf("%s(%s)", o.Code, model.RepairStatusLabel(o.Status)))
+	}
+	log.Printf("审计: 操作人=%s 物理删除 %d 张维修单[白名单=%s]: %s",
+		operatorOf(r), len(orders), model.RepairDeletableLabel(), strings.Join(detail, ", "))
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"deleted": len(orders),
+		"codes":   codes,
+	})
 }

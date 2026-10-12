@@ -9,8 +9,9 @@ import (
 )
 
 // TestDashboardAggregatesAgainstRealDB 钉死需求 B 首页聚合的两条硬约束：
-//   ① 统计口径用 display_status（COALESCE(NULLIF(biz_status,''),status)），不是裸 status；
-//   ② 可见范围（scopeConds / buildRepairWhere）在 WHERE 收窄，不同 scope 返回不同范围。
+//
+//	① 统计口径用 display_status（COALESCE(NULLIF(biz_status,''),status)），不是裸 status；
+//	② 可见范围（scopeConds / buildRepairWhere）在 WHERE 收窄，不同 scope 返回不同范围。
 //
 // 为什么必须连真库：GROUP BY COALESCE(...) 的表达式口径、LEFT JOIN 分类归组、
 // 以及 scope 条件拼进 WHERE 后是否正确收窄，都是「横跨 SQL 与 Go」的行为，单测回答不了。
@@ -22,7 +23,9 @@ func TestDashboardAggregatesAgainstRealDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("连接数据库失败: %v", err)
 	}
-	defer st.Close()
+	// 关连接走 t.Cleanup（与下面 cleanup 同为 LIFO）：先注册 ⇒ 最后执行 ⇒ 删行跑完才关连接。
+	// 详见 store/user_roles_test.go 的注释；勿改回 defer st.Close()。
+	t.Cleanup(func() { st.Close() })
 
 	ns := time.Now().UnixNano()
 	code := fmt.Sprintf("ZZ-DASH-%d", ns)
@@ -95,7 +98,7 @@ func TestDashboardAggregatesAgainstRealDB(t *testing.T) {
 		 fault_desc, urgency, status, assignee_emp_id, assignee_name, created_by)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'normal', ?, ?, ?, 'dash')`,
 		cardID, code, "首页聚合探针", probeReporter, "探针报修人", probeDept, "探针部门",
-		"探针故障", model.RepairPending, probeAssignee, "探针维修工"); err != nil {
+		"探针故障", model.RepairPending, probeAssignee, "探针维护人员"); err != nil {
 		t.Fatalf("建探针维修单失败: %v", err)
 	}
 
@@ -118,9 +121,9 @@ func TestDashboardAggregatesAgainstRealDB(t *testing.T) {
 	}{
 		{"部门主管（本部门子树）", model.RepairScope{DeptIDs: []int64{probeDept}}, 1},
 		{"报修人（自己提交）", model.RepairScope{ReporterEmpID: probeReporter}, 1},
-		{"维修工（指派给我）", model.RepairScope{AssigneeEmpID: probeAssignee}, 1},
+		{"维护人员（指派给我）", model.RepairScope{AssigneeEmpID: probeAssignee}, 1},
 		{"无关报修人", model.RepairScope{ReporterEmpID: probeReporter + 1}, 0},
-		{"无关维修工", model.RepairScope{AssigneeEmpID: probeAssignee + 1}, 0},
+		{"无关维护人员", model.RepairScope{AssigneeEmpID: probeAssignee + 1}, 0},
 		{"无关部门", model.RepairScope{DeptIDs: []int64{probeDept + 1}}, 0},
 	}
 	for _, c := range cases {

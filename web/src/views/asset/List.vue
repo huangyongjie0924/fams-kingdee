@@ -1,6 +1,61 @@
 <template>
-  <div class="page">
-    <div class="toolbar">
+  <div class="page" :class="{ 'has-selbar': selection.length > 0 }">
+    <!-- 页头：标题 + 主操作同一行 ——「一屏一个主按钮」的落点（方案 §5.1 / §6.2） -->
+    <div class="page-head">
+      <div class="ph-title">
+        <h1>资产台账</h1>
+        <span class="ph-sub">共 <b>{{ total }}</b> 条</span>
+        <span v-if="auth.scopeHint" class="ph-sub">{{ auth.scopeHint }}</span>
+      </div>
+      <div class="ph-actions">
+        <!-- 扫码找资产：本系统的特殊功能（设备上贴的标签就是它扫的码），从「更多」下拉里
+             提出来单独放在页头 —— 不限权限，所有角色都能看到。
+             信号黄只做左侧描边，不做文字/填充：白底 1.85:1 达不到对比度。 -->
+        <el-button class="scan-btn" :icon="Camera" @click="router.push({ name: 'scan' })">
+          扫码找资产
+        </el-button>
+        <el-button
+          v-if="auth.can('asset.manage')"
+          type="primary"
+          :icon="Plus"
+          @click="goNew"
+        >
+          新建资产
+        </el-button>
+        <el-button
+          v-if="auth.can('asset.manage')"
+          :icon="Upload"
+          @click="router.push({ name: 'import' })"
+        >
+          导入
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 工具栏：搜索 / 已启用筛选条件回显 / 筛选 / 更多（方案 §5.3） -->
+    <div class="page-toolbar">
+      <el-input
+        v-model="query.keyword"
+        class="tb-search"
+        :placeholder="isMobile ? '编码/名称/使用人/地点' : '编码/名称/规格/序列号/RFID/使用人/部门/地点'"
+        clearable
+        @keyup.enter="reload(1)"
+        @clear="reload(1)"
+      >
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
+
+      <!-- 把「已启用 N 个筛选条件」的计数换成具体条件，用户随时知道在看什么子集 -->
+      <span v-for="f in filterChips" :key="f.key" class="fchip">
+        <span class="fchip-txt">{{ f.label }}</span>
+        <el-icon class="fchip-x" @click="clearFilter(f.key)"><Close /></el-icon>
+      </span>
+
+      <el-button :icon="Filter" @click="searchDrawer = true">
+        筛选<span v-if="activeFilterCount" class="tb-badge">{{ activeFilterCount }}</span>
+      </el-button>
+
+      <!-- 窄屏没有多选列，进批量选择必须留一个入口 -->
       <el-button
         v-if="isMobile && auth.can('asset.manage')"
         :type="batchMode ? 'primary' : 'default'"
@@ -8,55 +63,25 @@
       >
         {{ batchMode ? "退出批量" : "批量" }}
       </el-button>
-      <el-button v-if="auth.can('asset.manage')" type="primary" :icon="Plus" @click="goNew">新建</el-button>
-      <el-button v-if="showManageActions" :icon="Edit" :disabled="selection.length !== 1" @click="goEdit">
-        编辑
-      </el-button>
-      <el-dropdown v-if="showManageActions" trigger="click" @command="changeStatus">
-        <el-button :icon="Switch" :disabled="!selection.length">
-          调整状态<el-icon><ArrowDown /></el-icon>
+
+      <!-- 导出/列配置都只对桌面有意义；扫码已提到页头 ⇒ 窄屏不再渲染「更多」，
+           否则会剩一个点开什么都没有的空下拉 -->
+      <el-dropdown v-if="!isMobile" trigger="click" @command="onMore">
+        <el-button>
+          更多<el-icon><ArrowDown /></el-icon>
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item v-for="s in statuses" :key="s" :command="s">
-              <el-tag :type="STATUS_TAG[s] || 'info'" size="small">{{ s }}</el-tag>
-            </el-dropdown-item>
+            <el-dropdown-item command="export" :icon="Download">导出 Excel</el-dropdown-item>
+            <el-dropdown-item command="columns" :icon="SetUp">列配置</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <el-button v-if="showManageActions" :icon="Delete" :disabled="!selection.length" @click="removeSelected">
-        删除
-      </el-button>
-      <!-- 打标签跟「导出」同级：能看到台账就该能打标签，不额外加权限 -->
-      <el-button v-if="selection.length" :icon="Printer" @click="printLabels">
-        打印标签（{{ selection.length }}）
-      </el-button>
-      <el-button v-if="!isMobile" :icon="Download" @click="exportExcel">导出</el-button>
-      <el-button v-if="isMobile" :icon="Camera" @click="router.push({ name: 'scan' })">扫码</el-button>
-      <span v-if="!isMobile" class="spacer" />
-      <el-input
-        v-model="query.keyword"
-        :placeholder="isMobile ? '编码/名称/使用人/地点' : '编码/名称/规格/序列号/RFID/使用人/部门/地点'"
-        clearable
-        :style="{ width: isMobile ? '100%' : '260px' }"
-        @keyup.enter="reload(1)"
-        @clear="reload(1)"
-      >
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
-      <el-button :icon="Filter" @click="searchDrawer = true">高级搜索</el-button>
-      <el-button v-if="!isMobile" :icon="SetUp" @click="columnDialog = true">列配置</el-button>
-    </div>
-
-    <div class="summary-bar">
-      <span>共 <b>{{ total }}</b> 条</span>
-      <span>金额合计 <b>{{ money(amountTotal) }}</b></span>
-      <span v-if="activeFilterCount">已启用 <b>{{ activeFilterCount }}</b> 个筛选条件</span>
-      <span v-if="auth.scopeHint">{{ auth.scopeHint }}</span>
     </div>
 
     <el-table
       v-if="!isMobile"
+      ref="tableRef"
       v-loading="loading"
       :data="rows"
       border
@@ -76,12 +101,12 @@
         show-overflow-tooltip
       >
         <template #default="{ row }">
-          <el-tag v-if="col.prop === 'status'" :type="STATUS_TAG[row.display_status] || 'info'" size="small">
-            {{ row.display_status }}
-          </el-tag>
+          <!-- 实心 el-tag → 点 + 描边 chip；映射关系仍由 api/meta.ts 决定 -->
+          <StatusChip v-if="col.prop === 'status'" :value="row.display_status" />
           <a v-else-if="col.prop === 'name'" class="link" @click="openDetail(row)">{{ row.name }}</a>
-          <span v-else-if="col.qty">{{ qty(row[col.prop]) }}</span>
-          <span v-else-if="col.money">{{ money(row[col.prop]) }}</span>
+          <span v-else-if="col.prop === 'asset_code'" class="u-mono">{{ row[col.prop] }}</span>
+          <span v-else-if="col.qty" class="u-mono">{{ qty(row[col.prop]) }}</span>
+          <span v-else-if="col.money" class="u-mono">{{ money(row[col.prop]) }}</span>
           <span v-else>{{ row[col.prop] }}</span>
         </template>
       </el-table-column>
@@ -98,14 +123,13 @@
             @change="toggleSelect(row, $event)"
           />
           <span class="m-title">{{ row.name }}</span>
-          <el-tag :type="STATUS_TAG[row.display_status] || 'info'" size="small">{{ row.display_status }}</el-tag>
+          <StatusChip :value="row.display_status" />
         </div>
         <div class="m-grid">
-          <span class="k">资产编码</span><span>{{ row.asset_code || "-" }}</span>
+          <span class="k">资产编码</span><span class="u-mono">{{ row.asset_code || "-" }}</span>
           <span class="k">使用部门</span><span>{{ row.use_dept_name || "-" }}</span>
           <span class="k">使用人</span><span>{{ row.user_emp_name || "-" }}</span>
           <span class="k">存放地点</span><span>{{ row.location || "-" }}</span>
-          <span class="k">金额</span><span>{{ money(row.amount) }}</span>
         </div>
       </div>
       <el-empty v-if="!rows.length && !loading" description="暂无数据" />
@@ -122,6 +146,34 @@
       @change="reload()"
     />
 
+    <!-- 选中浮条：未选中不显示。批量动作从工具栏搬到这里，既降噪，
+         也消除「点了才提示请先选择」的挫败感（方案 §5.3）。 -->
+    <div v-if="selection.length" class="selbar" role="region" aria-label="批量操作">
+      <span class="selbar-count">已选 <b>{{ selection.length }}</b> 项</span>
+      <el-button v-if="showManageActions" text class="sb-btn" :icon="Edit" :disabled="selection.length !== 1" @click="goEdit">
+        编辑
+      </el-button>
+      <el-dropdown v-if="showManageActions" trigger="click" @command="changeStatus">
+        <el-button text class="sb-btn" :icon="Switch">
+          调整状态<el-icon><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="s in statuses" :key="s" :command="s">
+              <StatusChip :value="s" />
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <el-button text class="sb-btn" :icon="Printer" @click="printLabels">打印标签</el-button>
+      <el-button v-if="showManageActions" text class="sb-btn is-danger" :icon="Delete" @click="removeSelected">
+        删除
+      </el-button>
+      <span class="selbar-spacer" />
+      <el-button v-if="!isMobile" text class="sb-btn" @click="selectAllPage">全选本页</el-button>
+      <el-button text class="sb-btn" :icon="Close" @click="clearSelection">取消</el-button>
+    </div>
+
     <SearchDrawer v-model="searchDrawer" :query="query" @apply="reload(1)" />
     <ColumnDialog v-model="columnDialog" v-model:enabled="enabledProps" />
     <CardDetail v-model="detailVisible" :card-id="detailId" />
@@ -134,19 +186,53 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   Plus, Edit, Delete, Download, Search, Filter, SetUp, Switch, ArrowDown, Camera, Printer,
+  Upload, Close,
 } from "@element-plus/icons-vue";
 import http, { download } from "../../api/client";
-import { ASSET_COLUMNS, STATUS_TAG, money, qty, selectableStatuses } from "../../api/meta";
+import { ASSET_COLUMNS, money, qty, selectableStatuses } from "../../api/meta";
 import { auth } from "../../stores/auth";
 import { useIsMobile } from "../../composables/useIsMobile";
 import { takeAssetCode } from "../../utils/deeplink";
+import StatusChip from "../../components/StatusChip.vue";
 import SearchDrawer from "./SearchDrawer.vue";
 import ColumnDialog from "./ColumnDialog.vue";
 import CardDetail from "./CardDetail.vue";
 
 const route = useRoute();
 const router = useRouter();
-const COLUMN_KEY = "asset_list_columns";
+// 金额列改为默认隐藏后，老浏览器里存的旧配置会「压过」新默认值（已存值优先），
+// 只改 meta.ts 的 defaultOn 对他们完全无效。所以换 key 做一次性迁移：
+// 读旧 key → 剔掉金额列 → 写进新 key。迁移后新 key 是权威，用户再手动打开金额列能正常保留。
+const COLUMN_KEY = "asset_list_columns_v2";
+const LEGACY_COLUMN_KEY = "asset_list_columns";
+const MONEY_PROPS = ASSET_COLUMNS.filter((c) => c.money).map((c) => c.prop);
+
+/** 读一份列配置；没有 / 不是数组 / JSON 坏了都返回 null，交给调用方兜底。 */
+function readStoredProps(key: string): string[] | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    // 一条坏数据不该挡住整个列表渲染
+    return null;
+  }
+}
+
+function initialEnabledProps(): string[] {
+  const defaults = ASSET_COLUMNS.filter((c) => c.defaultOn).map((c) => c.prop);
+  const current = readStoredProps(COLUMN_KEY);
+  if (current) return current;
+  const legacy = readStoredProps(LEGACY_COLUMN_KEY);
+  if (legacy) {
+    const migrated = legacy.filter((p) => !MONEY_PROPS.includes(p));
+    localStorage.setItem(COLUMN_KEY, JSON.stringify(migrated));
+    localStorage.removeItem(LEGACY_COLUMN_KEY);
+    return migrated;
+  }
+  return defaults;
+}
 const sortableProps = new Set(["asset_code", "name", "amount", "purchase_date", "status"]);
 
 const isMobile = useIsMobile();
@@ -154,12 +240,12 @@ const batchMode = ref(false);
 const loading = ref(false);
 const rows = ref<any[]>([]);
 const total = ref(0);
-const amountTotal = ref(0);
 const selection = ref<any[]>([]);
 const searchDrawer = ref(false);
 const columnDialog = ref(false);
 const detailVisible = ref(false);
 const detailId = ref(0);
+const tableRef = ref();
 
 // 窄屏表格换卡片后没有多选列，选中只能靠「批量」模式勾卡片，管理类按钮平时收起来腾地方
 const showManageActions = computed(
@@ -167,7 +253,7 @@ const showManageActions = computed(
 );
 
 watch(batchMode, (on) => {
-  if (!on) selection.value = [];
+  if (!on) clearSelection();
 });
 
 function toggleBatch() {
@@ -184,6 +270,16 @@ function toggleSelect(row: any, checked: boolean) {
     : selection.value.filter((r) => r.id !== row.id);
 }
 
+/** 全选/取消要同时改 el-table 自己的勾选状态，只改 selection 数组不会让复选框跟着变。 */
+function selectAllPage() {
+  for (const r of rows.value) tableRef.value?.toggleRowSelection(r, true);
+}
+
+function clearSelection() {
+  tableRef.value?.clearSelection();
+  selection.value = [];
+}
+
 function onCardTap(row: any) {
   if (batchMode.value) toggleSelect(row, !isSelected(row));
   else openDetail(row);
@@ -192,10 +288,7 @@ function onCardTap(row: any) {
 const query = ref<Record<string, any>>({ keyword: "", page: 1, page_size: 50 });
 const statuses = ref<string[]>([]);
 
-const enabledProps = ref<string[]>(
-  JSON.parse(localStorage.getItem(COLUMN_KEY) || "null") ||
-    ASSET_COLUMNS.filter((c) => c.defaultOn).map((c) => c.prop),
-);
+const enabledProps = ref<string[]>(initialEnabledProps());
 
 const visibleColumns = computed(() => ASSET_COLUMNS.filter((c) => enabledProps.value.includes(c.prop)));
 
@@ -206,6 +299,49 @@ const activeFilterCount = computed(
     ).length,
 );
 
+// —— 已启用筛选条件的可移除回显 ——
+// 只做「键 → 中文名」的翻译，不参与任何查询构造：清除动作就是把该键置空后重查。
+const FILTER_LABELS: Record<string, string> = {
+  status: "状态",
+  asset_code: "资产编码",
+  name: "资产名称",
+  category_id: "资产类别",
+  area_id: "区域",
+  use_company_id: "使用公司",
+  use_dept_id: "使用部门",
+  user_name: "使用人",
+  location: "存放地点",
+  serial_no: "设备序列号",
+  manager_name: "管理人",
+  source: "来源",
+  purchase_from: "购入起始",
+  purchase_to: "购入截止",
+  amount_min: "金额下限",
+  amount_max: "金额上限",
+};
+
+const filterChips = computed(() =>
+  Object.entries(FILTER_LABELS)
+    .filter(([k]) => {
+      const v = query.value[k];
+      return v !== "" && v != null && v !== 0 && (!Array.isArray(v) || v.length);
+    })
+    .map(([k, label]) => ({
+      key: k,
+      label: Array.isArray(query.value[k]) ? `${label} ${query.value[k].length} 项` : label,
+    })),
+);
+
+function clearFilter(key: string) {
+  query.value[key] = Array.isArray(query.value[key]) ? [] : "";
+  reload(1);
+}
+
+function onMore(cmd: string) {
+  if (cmd === "export") exportExcel();
+  else if (cmd === "columns") columnDialog.value = true;
+}
+
 async function reload(page?: number) {
   if (page) query.value.page = page;
   localStorage.setItem(COLUMN_KEY, JSON.stringify(enabledProps.value));
@@ -214,7 +350,6 @@ async function reload(page?: number) {
     const { data } = await http.get("/assets", { params: query.value });
     rows.value = data.items || [];
     total.value = data.total;
-    amountTotal.value = data.amount_total;
   } finally {
     loading.value = false;
   }
@@ -316,15 +451,177 @@ defineExpose({ reload });
 </script>
 
 <style scoped>
+/* —— 页头 —— */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: var(--hairline);
+}
+
+.ph-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ph-title h1 {
+  margin: 0;
+  font-size: var(--t-20);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ph-sub {
+  font-size: var(--t-12);
+  color: var(--steel-500);
+}
+
+.ph-sub b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ph-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* 扫码是系统的特殊功能（设备标签上贴的就是它扫的码），从「更多」下拉里提出来单独放页头。
+   信号黄只做左侧描边 —— 白底 1.85:1 达不到对比度，不能用于文字或填充色。 */
+.scan-btn {
+  box-shadow: inset 3px 0 0 var(--signal);
+}
+
+/* —— 工具栏 —— */
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.tb-search {
+  width: 280px;
+}
+
+.tb-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: var(--r);
+  background: var(--ink);
+  color: #fff;
+  font-size: var(--t-11);
+  line-height: 16px;
+}
+
+/* —— 筛选条件回显 —— */
+.fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  background: var(--steel-100);
+  border: 1px solid var(--steel-200);
+  border-radius: var(--r);
+  font-size: var(--t-12);
+  color: var(--steel-700);
+}
+
+.fchip-x {
+  cursor: pointer;
+  color: var(--steel-500);
+}
+
+.fchip-x:hover {
+  color: var(--danger);
+}
+
 .link {
   color: var(--el-color-primary);
   cursor: pointer;
 }
 
-/* 窄屏把搜索框提到第一行独占一行，按钮留在第二行，避免「高级搜索」被挤成孤行 */
+/* —— 选中浮条：深色，固定在内容区底部 —— */
+.selbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(52px + env(safe-area-inset-bottom));
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: var(--ink);
+  border-top: 2px solid var(--signal);
+}
+
+.selbar-count {
+  margin-right: 8px;
+  font-size: var(--t-13);
+  color: #c8cddb;
+  white-space: nowrap;
+}
+
+.selbar-count b {
+  color: #fff;
+  font-family: var(--u-mono);
+}
+
+.selbar-spacer {
+  flex: 1;
+}
+
+.sb-btn {
+  color: #c8cddb;
+}
+
+.sb-btn:hover {
+  color: var(--signal);
+}
+
+.sb-btn.is-danger:hover {
+  color: #ff8a7a;
+}
+
+/* 浮条占掉的高度要让出来，否则列表最后一行永远被压住 */
+.page.has-selbar {
+  padding-bottom: 72px;
+}
+
+/* 桌面端侧栏 200px，浮条不要压在侧栏下面 */
+@media (min-width: 768px) and (min-height: 521px) {
+  .selbar {
+    left: 200px;
+    bottom: 0;
+  }
+}
+
+/* 窄屏把搜索框提到第一行独占一行，按钮留在第二行，避免「更多」被挤成孤行 */
 @media (max-width: 767px), (max-height: 520px) {
-  .toolbar .el-input {
+  .page-toolbar .tb-search {
     order: -1;
+    width: 100%;
+  }
+
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .ph-actions {
+    justify-content: flex-end;
   }
 }
 </style>

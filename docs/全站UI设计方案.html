@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FAMS 固定资产管理 · 全站界面设计方案</title>
+<style>
+:root{
+  --ink:#14171b; --ink-2:#1c2127; --ink-3:#232a3b;
+  --s7:#3d454f; --s6:#5c6470; --s5:#6b7480; --s4:#8d959f; --s3:#c3c9d0; --s2:#dde1e6; --s1:#eef1f4;
+  --paper:#f6f7f9; --surface:#fff;
+  --signal:#f5b301; --signal-d:#cf9700;
+  --ok:#2f8f4e; --warn:#c9781a; --danger:#c0392b; --info:#5c6470;
+  --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",sans-serif;
+  --bd:1px solid var(--s2);
+  --doc:860px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font:400 14px/1.7 var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-weight:600;margin:0;line-height:1.35}
+p{margin:0 0 12px}
+code{font:400 12.5px/1.5 var(--mono);background:var(--s1);border:var(--bd);border-radius:2px;padding:1px 5px;color:var(--s7)}
+a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--s3)}
+a:hover{border-bottom-color:var(--signal)}
+
+/* ---------- 文档外壳 ---------- */
+.wrap{display:grid;grid-template-columns:236px minmax(0,1fr);gap:0;max-width:1320px;margin:0 auto;align-items:start}
+.toc{position:sticky;top:0;max-height:100vh;overflow:auto;padding:28px 20px 60px;border-right:var(--bd)}
+.toc-t{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--s4);margin-bottom:14px}
+.toc a{display:block;border:0;font-size:13px;color:var(--s6);padding:5px 0 5px 10px;border-left:2px solid transparent}
+.toc a:hover{color:var(--ink);border-left-color:var(--signal)}
+.toc a.sub{padding-left:22px;font-size:12.5px;color:var(--s5)}
+.doc{padding:0 40px 120px;max-width:calc(var(--doc) + 80px)}
+
+/* ---------- 封面 ---------- */
+.cover{background:var(--ink);color:#fff;margin:0 -40px 40px;padding:56px 40px 48px;position:relative;overflow:hidden}
+.cover::before{content:"";position:absolute;inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);
+  background-size:44px 44px}
+.cover>*{position:relative}
+.cover .kicker{font:500 11px/1 var(--mono);letter-spacing:.2em;color:var(--signal);margin-bottom:18px}
+.cover h1{font-size:30px;letter-spacing:-.01em;margin-bottom:14px}
+.cover .lede{font-size:14px;color:rgba(255,255,255,.66);max-width:560px;line-height:1.75}
+.cover .meta{display:flex;flex-wrap:wrap;gap:28px;margin-top:32px;padding-top:24px;border-top:1px solid rgba(255,255,255,.14)}
+.cover .meta div{font-size:12px;color:rgba(255,255,255,.5)}
+.cover .meta b{display:block;font:500 14px/1.4 var(--sans);color:#fff;margin-top:3px}
+
+/* ---------- 章节 ---------- */
+section{padding-top:34px;margin-top:34px;border-top:var(--bd)}
+section:first-of-type{border-top:0;margin-top:0}
+h2.sec{font-size:22px;letter-spacing:-.01em;margin-bottom:6px;scroll-margin-top:20px}
+h2.sec .n{font:500 13px/1 var(--mono);color:var(--signal-d);margin-right:10px;vertical-align:2px}
+.sec-sub{color:var(--s6);font-size:13.5px;margin-bottom:26px;max-width:640px}
+h3.sub{font-size:16px;margin:30px 0 12px;padding-left:11px;border-left:3px solid var(--signal);line-height:1.3}
+h4.sub2{font-size:13.5px;color:var(--s7);margin:20px 0 8px;font-weight:600}
+.lead{font-size:15px;color:var(--s7);line-height:1.8}
+
+/* ---------- 卡片 / 网格 ---------- */
+.card{background:var(--surface);border:var(--bd);border-radius:2px;padding:20px 22px;margin-bottom:16px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.kpi{background:var(--surface);border:var(--bd);border-radius:2px;padding:14px 16px}
+.kpi .k{font-size:11px;letter-spacing:.08em;color:var(--s4);text-transform:uppercase;margin-bottom:6px}
+.kpi .v{font:500 24px/1.1 var(--mono);letter-spacing:-.02em}
+.kpi .v small{font-size:13px;color:var(--s5);font-weight:400}
+.kpi.bad .v{color:var(--danger)}
+.kpi.good .v{color:var(--ok)}
+
+/* ---------- 表格 ---------- */
+table{width:100%;border-collapse:collapse;font-size:13px;margin:14px 0 18px}
+th,td{text-align:left;padding:9px 12px;border-bottom:var(--bd);vertical-align:top}
+th{background:var(--s1);font:500 11px/1.4 var(--sans);letter-spacing:.06em;color:var(--s6);text-transform:uppercase;border-bottom:1px solid var(--s3)}
+td.num{font-family:var(--mono);text-align:right;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.mono{font-family:var(--mono)}
+
+/* ---------- 徽标 / 标记 ---------- */
+.pill{display:inline-block;font:500 11px/1 var(--sans);padding:3px 8px;border-radius:2px;border:1px solid}
+.pill.ok{color:var(--ok);border-color:rgba(47,143,78,.4);background:rgba(47,143,78,.07)}
+.pill.warn{color:var(--warn);border-color:rgba(201,120,26,.4);background:rgba(201,120,26,.07)}
+.pill.bad{color:var(--danger);border-color:rgba(192,57,43,.4);background:rgba(192,57,43,.07)}
+.pill.n{color:var(--s6);border-color:var(--s2);background:var(--s1)}
+.pill.sig{color:#7a5900;border-color:rgba(245,179,1,.5);background:rgba(245,179,1,.14)}
+.arrow{color:var(--s4);padding:0 6px}
+.tag-inline{font:500 11px/1 var(--mono);color:var(--s5);letter-spacing:.04em}
+
+/* ---------- 列表 ---------- */
+ul.clean{list-style:none;padding:0;margin:0 0 14px}
+ul.clean li{position:relative;padding:5px 0 5px 20px;color:var(--s7)}
+ul.clean li::before{content:"";position:absolute;left:2px;top:13px;width:6px;height:6px;background:var(--s3)}
+ul.clean li.ok::before{background:var(--ok)}
+ul.clean li.no::before{background:var(--danger)}
+ul.clean li.sig::before{background:var(--signal)}
+
+.note{border-left:3px solid var(--s3);padding:12px 16px;background:var(--surface);margin:16px 0;font-size:13.5px;color:var(--s7)}
+.note.warn{border-left-color:var(--warn);background:rgba(201,120,26,.05)}
+.note.bad{border-left-color:var(--danger);background:rgba(192,57,43,.05)}
+.note.ok{border-left-color:var(--ok);background:rgba(47,143,78,.05)}
+.note b{color:var(--ink)}
+
+/* ---------- 色板 ---------- */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;margin:16px 0 22px}
+.sw{border:var(--bd);border-radius:2px;overflow:hidden;background:var(--surface)}
+.sw .chip{height:56px}
+.sw .lb{padding:7px 9px;font-size:11px;line-height:1.45;color:var(--s6)}
+.sw .lb b{display:block;font:500 11px/1.4 var(--mono);color:var(--ink)}
+.sw .lb span{font-family:var(--mono);font-size:10.5px;color:var(--s5)}
+
+/* ---------- 排版样张 ---------- */
+.typescale{border:var(--bd);background:var(--surface);border-radius:2px;margin:16px 0 22px}
+.typescale .row{display:grid;grid-template-columns:92px 1fr;gap:16px;padding:12px 16px;border-bottom:var(--bd);align-items:baseline}
+.typescale .row:last-child{border-bottom:0}
+.typescale .tk{font:500 11px/1.5 var(--mono);color:var(--s5)}
+.typescale .tk em{display:block;font-style:normal;color:var(--s4);font-size:10.5px}
+
+/* ================= 应用界面 Mockup ================= */
+.mock{border:1px solid var(--s3);border-radius:3px;overflow:hidden;background:var(--surface);margin:20px 0 26px;box-shadow:0 1px 3px rgba(20,23,27,.06)}
+.mock-bar{height:30px;background:var(--s1);border-bottom:var(--bd);display:flex;align-items:center;gap:6px;padding:0 12px}
+.mock-bar i{width:9px;height:9px;border-radius:50%;background:var(--s3);display:block}
+.mock-bar span{margin-left:10px;font:400 11px/1 var(--mono);color:var(--s5)}
+.app{display:grid;grid-template-columns:186px minmax(0,1fr);min-height:430px;font-size:12px}
+
+/* 侧栏 */
+.snav{background:var(--ink);color:#c8cddb;padding:0 0 16px;position:relative}
+.snav .logo{height:52px;display:flex;align-items:center;gap:9px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.09)}
+.snav .logo .mark{width:22px;height:22px;background:var(--signal);flex:none;position:relative}
+.snav .logo .mark::after{content:"";position:absolute;inset:5px;background:var(--ink)}
+.snav .logo b{color:#fff;font-size:12.5px;font-weight:600;letter-spacing:.02em;line-height:1.2}
+.snav .logo em{display:block;font:400 9.5px/1.3 var(--mono);font-style:normal;color:rgba(255,255,255,.38);letter-spacing:.1em}
+.snav .grp{padding:14px 14px 4px;font:500 10px/1 var(--sans);letter-spacing:.14em;color:rgba(255,255,255,.3)}
+.snav .it{display:flex;align-items:center;gap:9px;padding:8px 14px 8px 14px;color:#c8cddb;position:relative;border-left:2px solid transparent}
+.snav .it .ic{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.72}
+.snav .it.on{background:rgba(255,255,255,.06);color:#fff;border-left-color:var(--signal)}
+.snav .it.on .ic{opacity:1;stroke:var(--signal)}
+.snav .it .badge{margin-left:auto;font:500 10px/1 var(--mono);background:var(--signal);color:var(--ink);padding:2px 5px;border-radius:2px}
+
+/* 顶栏 */
+.mainc{background:var(--paper);display:flex;flex-direction:column;min-width:0}
+.tbar{height:52px;background:var(--surface);border-bottom:1px solid var(--s2);display:flex;align-items:center;gap:10px;padding:0 18px;flex:none}
+.crumb{font-size:11.5px;color:var(--s5)}
+.crumb b{color:var(--ink);font-weight:600}
+.tbar .sp{flex:1}
+.rolechip{font:500 11px/1 var(--sans);color:var(--s6);border:1px solid var(--s2);background:var(--s1);padding:4px 8px;border-radius:2px}
+.usr{font-size:11.5px;color:var(--s7);display:flex;align-items:center;gap:5px}
+.usr i{width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font:500 10px/22px var(--sans);text-align:center;font-style:normal}
+
+.pg{padding:18px 20px 26px;flex:1}
+.ph{display:flex;align-items:flex-end;gap:14px;padding-bottom:13px;border-bottom:1px solid var(--s2);margin-bottom:14px}
+.ph h3{font-size:17px;font-weight:600;letter-spacing:-.01em}
+.ph .desc{font-size:11.5px;color:var(--s5);margin-top:3px}
+.ph .sp{flex:1}
+
+/* 按钮 */
+.b{display:inline-flex;align-items:center;gap:5px;font:500 11.5px/1 var(--sans);padding:8px 12px;border-radius:2px;border:1px solid var(--s2);background:var(--surface);color:var(--s7);white-space:nowrap}
+.b.p{background:var(--ink);border-color:var(--ink);color:#fff}
+.b.sig{background:var(--signal);border-color:var(--signal);color:var(--ink)}
+.b.d{color:var(--danger);border-color:rgba(192,57,43,.35)}
+.b.t{border-color:transparent;background:transparent;padding:6px 8px}
+.b .cv{width:9px;height:9px;border-right:1.4px solid currentColor;border-bottom:1.4px solid currentColor;transform:rotate(45deg) translateY(-2px)}
+.b .cvs{width:11px;height:11px;border:1.4px solid currentColor;flex:none}
+
+.tools{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.search{flex:1;min-width:160px;max-width:320px;display:flex;align-items:center;gap:7px;border:1px solid var(--s2);border-radius:2px;background:var(--surface);padding:7px 10px;color:var(--s4);font-size:11.5px}
+.search .mg{width:11px;height:11px;border:1.4px solid var(--s4);border-radius:50%;position:relative;flex:none}
+.search .mg::after{content:"";position:absolute;right:-4px;bottom:-3px;width:5px;height:1.4px;background:var(--s4);transform:rotate(45deg)}
+
+.sumbar{font-size:11.5px;color:var(--s5);margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.sumbar b{color:var(--ink);font-family:var(--mono);font-weight:500}
+
+/* 表格 */
+.tbl{width:100%;border-collapse:collapse;font-size:11.5px;background:var(--surface);border:var(--bd)}
+.tbl th{background:var(--s1);font:500 10.5px/1.4 var(--sans);letter-spacing:.05em;color:var(--s6);text-transform:uppercase;padding:8px 11px;border-bottom:1px solid var(--s3);white-space:nowrap}
+.tbl td{padding:9px 11px;border-bottom:var(--bd);color:var(--s7);white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl td.k{font-family:var(--mono);color:var(--ink);font-size:11px}
+.tbl td.nm{color:var(--ink);font-weight:500}
+.tbl td.r{text-align:right;font-family:var(--mono)}
+.tbl tr.sel td{background:rgba(245,179,1,.09)}
+.tbl .cb{width:11px;height:11px;border:1.4px solid var(--s3);border-radius:2px;display:block}
+.tbl .cb.on{background:var(--ink);border-color:var(--ink);position:relative}
+.tbl .cb.on::after{content:"";position:absolute;left:3px;top:0.5px;width:3px;height:6px;border-right:1.6px solid #fff;border-bottom:1.6px solid #fff;transform:rotate(40deg)}
+
+/* 状态 chip —— 本轮核心组件 */
+.chip{display:inline-flex;align-items:center;gap:5px;font:500 10.5px/1 var(--sans);padding:4px 8px;border-radius:2px;border:1px solid var(--s2);background:var(--surface);color:var(--s7);white-space:nowrap}
+.chip i{width:6px;height:6px;border-radius:50%;background:var(--s4);flex:none}
+.chip.ok i{background:var(--ok)} .chip.ok{border-color:rgba(47,143,78,.35);color:#226b3a}
+.chip.warn i{background:var(--warn)} .chip.warn{border-color:rgba(201,120,26,.35);color:#96580f}
+.chip.bad i{background:var(--danger)} .chip.bad{border-color:rgba(192,57,43,.35);color:#94291f}
+.chip.inf i{background:var(--info)} .chip.inf{border-color:var(--s3);color:var(--s7)}
+.chip.ink i{background:var(--ink)} .chip.ink{border-color:var(--s3);color:var(--ink)}
+
+/* 底部浮条 */
+.floatbar{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;padding:10px 14px;border-radius:2px;font-size:11.5px;margin-top:-1px}
+.floatbar b{font-family:var(--mono);color:var(--signal);font-weight:500}
+.floatbar .sp{flex:1}
+.floatbar .fb{font:500 11px/1 var(--sans);padding:6px 10px;border:1px solid rgba(255,255,255,.24);border-radius:2px;color:#fff}
+.floatbar .fb.p{background:var(--signal);border-color:var(--signal);color:var(--ink)}
+.floatbar .fb.x{border-color:transparent;color:rgba(255,255,255,.6)}
+
+/* 分页 */
+.pager{display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:11px 0 0;font-size:11px;color:var(--s5)}
+.pager .p{min-width:22px;height:22px;line-height:22px;text-align:center;border:var(--bd);border-radius:2px;background:var(--surface);font-family:var(--mono)}
+.pager .p.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+/* 工作台 */
+.todos{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.todo{background:var(--surface);border:var(--bd);border-left:3px solid var(--s3);border-radius:2px;padding:11px 13px}
+.todo.hot{border-left-color:var(--danger)} .todo.wm{border-left-color:var(--warn)} .todo.cl{border-left-color:var(--s3)}
+.todo .tl{font-size:11.5px;color:var(--s6)}
+.todo .tv{font:500 26px/1.1 var(--mono);margin-top:5px;letter-spacing:-.02em}
+.todo.hot .tv{color:var(--danger)} .todo.wm .tv{color:var(--warn)} .todo.cl .tv{color:var(--s3)}
+.todo .tu{font-size:10.5px;color:var(--s5);margin-top:2px}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;margin-top:10px}
+.stat{background:var(--surface);border:var(--bd);border-radius:2px;padding:12px 13px}
+.stat .k{font-size:10.5px;color:var(--s5)}
+.stat .v{font:500 20px/1.2 var(--mono);margin-top:4px;letter-spacing:-.02em}
+.stat .u{font-size:10px;color:var(--s4)}
+
+/* 详情页 */
+.detail{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:14px}
+.dcard{background:var(--surface);border:var(--bd);border-radius:2px;margin-bottom:12px}
+.dcard>h4{font-size:11.5px;font-weight:600;padding:10px 14px;border-bottom:var(--bd);background:var(--s1);letter-spacing:.03em;color:var(--s7)}
+.drows{padding:4px 14px 10px}
+.drow{display:grid;grid-template-columns:104px minmax(0,1fr);gap:12px;padding:7px 0;border-bottom:1px dashed var(--s1);font-size:11.5px}
+.drow:last-child{border-bottom:0}
+.drow .dk{color:var(--s5)}
+.drow .dv{color:var(--ink);word-break:break-all}
+.drow .dv.m{font-family:var(--mono)}
+.rail{display:flex;flex-direction:column;gap:9px;position:relative}
+.rail .b{justify-content:center}
+
+/* 步骤条 */
+.steps{display:flex;align-items:center;gap:0;margin:14px 0 18px}
+.step{flex:1;display:flex;align-items:center;gap:9px;padding-right:12px}
+.step .n{width:24px;height:24px;border-radius:50%;border:1.4px solid var(--s3);color:var(--s5);font:500 11px/22px var(--mono);text-align:center;flex:none;background:var(--surface)}
+.step .lt{font-size:11.5px;color:var(--s5);line-height:1.3}
+.step.done .n{background:var(--ok);border-color:var(--ok);color:#fff}
+.step.cur .n{background:var(--ink);border-color:var(--ink);color:#fff}
+.step.cur .lt{color:var(--ink);font-weight:600}
+.step .ln{flex:1;height:1px;background:var(--s2);margin-left:4px}
+
+/* 表单 */
+.field{margin-bottom:13px}
+.field .fl{font-size:11.5px;color:var(--s7);margin-bottom:5px;display:flex;gap:4px;align-items:center}
+.field .fl em{color:var(--danger);font-style:normal}
+.inp{border:1px solid var(--s2);border-radius:2px;background:var(--surface);padding:8px 10px;font-size:11.5px;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.inp.ph{color:var(--s4)}
+.inp.focus{border-color:var(--signal);box-shadow:0 0 0 3px rgba(245,179,1,.15)}
+.inp .cv{width:8px;height:8px;border-right:1.4px solid var(--s4);border-bottom:1.4px solid var(--s4);transform:rotate(45deg) translateY(-2px);flex:none}
+.ta{border:1px solid var(--s2);border-radius:2px;background:var(--surface);padding:9px 10px;font-size:11.5px;color:var(--s4);min-height:62px;line-height:1.6}
+.hint{font-size:10.5px;color:var(--s5);margin-top:4px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* 扫码页 */
+.scanbody{display:grid;grid-template-columns:minmax(0,1fr) 218px;gap:14px}
+.viewport{background:var(--ink);border-radius:2px;position:relative;min-height:250px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.viewport::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:26px 26px}
+.vframe{width:158px;height:110px;position:relative}
+.vframe i{position:absolute;width:22px;height:22px;border:2px solid var(--signal)}
+.vframe i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0}
+.vframe i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0}
+.vframe i:nth-child(3){bottom:0;left:0;border-right:0;border-top:0}
+.vframe i:nth-child(4){bottom:0;right:0;border-left:0;border-top:0}
+.vscan{position:absolute;left:0;right:0;height:2px;background:var(--signal);top:46%;box-shadow:0 0 8px rgba(245,179,1,.7)}
+.vtxt{position:absolute;bottom:12px;left:0;right:0;text-align:center;font:400 10.5px/1.4 var(--mono);color:rgba(255,255,255,.55)}
+.result{background:var(--surface);border:var(--bd);border-left:3px solid var(--ok);border-radius:2px;padding:12px 14px}
+
+/* 移动端 */
+.phones{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;margin:20px 0 26px}
+.phone{width:288px;border:1px solid var(--s3);border-radius:16px;background:var(--surface);overflow:hidden;box-shadow:0 2px 10px rgba(20,23,27,.09);flex:none}
+.phone .notch{height:20px;background:var(--ink);display:flex;align-items:center;justify-content:center}
+.phone .notch i{width:52px;height:5px;border-radius:3px;background:rgba(255,255,255,.24);display:block}
+.phone .scr{background:var(--paper);min-height:452px;display:flex;flex-direction:column}
+.phone .tb{height:44px;background:var(--surface);border-bottom:1px solid var(--s2);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:12px;font-weight:600;flex:none}
+.phone .tb .bk{width:9px;height:9px;border-left:1.6px solid var(--s7);border-bottom:1.6px solid var(--s7);transform:rotate(45deg);flex:none}
+.phone .tb .sp{flex:1}
+.phone .bd{padding:12px;flex:1;overflow:hidden}
+.phone .cap{font:500 11px/1 var(--mono);color:var(--s5);text-align:center;padding:9px;background:var(--s1);border-top:var(--bd);letter-spacing:.04em}
+
+.mcard{background:var(--surface);border:var(--bd);border-left:3px solid var(--s3);border-radius:2px;padding:10px 12px;margin-bottom:9px}
+.mcard .mt{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.mcard .mn{font-size:12px;font-weight:600;color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mcard .mk{font:400 10.5px/1.4 var(--mono);color:var(--s5)}
+.mcard .ml{font-size:11px;color:var(--s6);display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+
+.tabbar{height:52px;background:var(--surface);border-top:1px solid var(--s2);display:grid;grid-template-columns:repeat(4,1fr);flex:none;padding-bottom:env(safe-area-inset-bottom)}
+.tabbar .tb-i{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;color:var(--s5);position:relative}
+.tabbar .tb-i .ic{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.8}
+.tabbar .tb-i.on{color:var(--ink);font-weight:600}
+.tabbar .tb-i.on .ic{stroke:var(--signal);opacity:1}
+.tabbar .tb-i.on::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:22px;height:2px;background:var(--signal)}
+
+.fab{position:absolute;right:14px;bottom:64px;width:46px;height:46px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 3px 10px rgba(20,23,27,.3)}
+.mstat{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:11px}
+.mstat .s{background:var(--surface);border:var(--bd);border-radius:2px;padding:9px 10px}
+.mstat .s .k{font-size:10px;color:var(--s5)}
+.mstat .s .v{font:500 19px/1.2 var(--mono);margin-top:3px}
+.greetm{background:var(--ink);color:#fff;border-radius:2px;padding:13px 14px;margin-bottom:11px}
+.greetm .g1{font-size:14px;font-weight:600}
+.greetm .g2{font:400 10.5px/1.5 var(--mono);color:rgba(255,255,255,.5);margin-top:3px}
+
+/* 双列对比 */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0 22px}
+.compare>div{min-width:0}
+.compare .ch{font:500 11px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--s5);margin-bottom:9px;padding-bottom:7px;border-bottom:var(--bd)}
+.compare .ch.before{color:var(--danger)} .compare .ch.after{color:var(--ok)}
+.mininav{border:var(--bd);background:var(--surface);border-radius:2px;overflow:hidden}
+.mininav .r{display:flex;align-items:center;gap:8px;padding:7px 11px;font-size:11.5px;color:var(--s7);border-bottom:1px solid var(--s1)}
+.mininav .r:last-child{border-bottom:0}
+.mininav .r .d{width:7px;height:7px;background:var(--s3);flex:none}
+.mininav .r.grp{background:var(--s1);font:500 10px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--s5);padding:6px 11px}
+.mininav .r.hl{background:rgba(245,179,1,.1);border-left:3px solid var(--signal);padding-left:8px}
+.mininav .r .num{margin-left:auto;font:400 10px/1 var(--mono);color:var(--s4)}
+
+@media (max-width:1080px){
+  .wrap{grid-template-columns:1fr}
+  .toc{display:none}
+  .doc{padding:0 22px 80px}
+  .cover{margin:0 -22px 30px;padding:40px 22px}
+  .compare,.detail,.scanbody,.two{grid-template-columns:1fr}
+}
+@media print{
+  .toc{display:none}.wrap{grid-template-columns:1fr}
+  section{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <div class="toc-t">目录</div>
+  <a href="#s0">方案摘要</a>
+  <a href="#s1">01 · 现状诊断</a>
+  <a href="#s2">02 · 设计原则</a>
+  <a href="#s3">03 · 信息架构与导航</a>
+  <a href="#s3-1" class="sub">3.1 导航分组</a>
+  <a href="#s3-2" class="sub">3.2 维修入口收敛</a>
+  <a href="#s3-3" class="sub">3.3 移动端标签栏</a>
+  <a href="#s3-4" class="sub">3.4 路由映射表</a>
+  <a href="#s4">04 · 视觉系统</a>
+  <a href="#s4-1" class="sub">4.1 色彩</a>
+  <a href="#s4-2" class="sub">4.2 类型尺度</a>
+  <a href="#s4-3" class="sub">4.3 间距 · 圆角 · 描边</a>
+  <a href="#s4-4" class="sub">4.4 状态色映射</a>
+  <a href="#s5">05 · 组件规范</a>
+  <a href="#s6">06 · 核心页面设计稿</a>
+  <a href="#s6-1" class="sub">6.1 工作台</a>
+  <a href="#s6-2" class="sub">6.2 资产台账</a>
+  <a href="#s6-3" class="sub">6.3 资产详情</a>
+  <a href="#s6-4" class="sub">6.4 报修流程</a>
+  <a href="#s6-5" class="sub">6.5 扫码作业</a>
+  <a href="#s6-6" class="sub">6.6 移动端</a>
+  <a href="#s7">07 · 落地路径与风险</a>
+</nav>
+
+<main class="doc">
+
+<div class="cover">
+  <div class="kicker">FAMS · 固定资产管理系统</div>
+  <h1>全站界面设计方案</h1>
+  <p class="lede">把已经落地的「工业简约」语言从登录页扩展到全部 26 个视图，并把按模块堆叠的导航重组为按任务组织。方案定位是<b>演进，不是推翻</b>——保留现有信息密度、双端分叉与数据结构，只统一视觉语言、收敛导航层级、补齐移动端。</p>
+  <div class="meta">
+    <div>文档版本<b>v1.0</b></div>
+    <div>基准代码<b class="mono">6c62a3e</b></div>
+    <div>覆盖范围<b>26 个视图 · 7,764 行</b></div>
+    <div>改造阶段<b>6 期</b></div>
+  </div>
+</div>
+
+<!-- ============ 0 摘要 ============ -->
+<section id="s0">
+  <h2 class="sec"><span class="n">00</span>方案摘要</h2>
+  <p class="sec-sub">一页看懂：改什么、为什么改、改完什么样。</p>
+
+  <div class="grid4">
+    <div class="kpi bad"><div class="k">视觉一致性</div><div class="v">1<small> / 26 视图</small></div></div>
+    <div class="kpi bad"><div class="k">导航层级</div><div class="v">2<small> 层扁平</small></div></div>
+    <div class="kpi bad"><div class="k">字号档位</div><div class="v">9<small> 个值</small></div></div>
+    <div class="kpi bad"><div class="k">移动端入口</div><div class="v">0<small> 个直达</small></div></div>
+  </div>
+
+  <h3 class="sub">四个核心结论</h3>
+  <ul class="clean">
+    <li class="sig"><b>登录页与内页是两个产品。</b>登录页是石墨黑 + 信号黄 + 2px 硬边；内页是 Element Plus 默认蓝 <code>#409eff</code> + 8px 圆角 + 默认阴影。用户一进系统就感到「换了个人做的」。</li>
+    <li class="sig"><b>导航按「系统有什么」组织，不按「我要做什么」。</b>12 项平铺、无分组，维修三入口（我的报修 / 我的维修 / 维修管理）命名相近、靠权限位隐式区分，用户需要先知道自己是什么角色才能找到入口。</li>
+    <li class="sig"><b>列表页把 12 个控件平等地铺在一行。</b>主操作「新建资产」被「批量」压在第二位，没有主次；批量操作常驻占位，而它是低频动作。</li>
+    <li class="sig"><b>移动端只有汉堡抽屉。</b>扫码是移动端最高频的动作，却要「点汉堡 → 找扫码」两步；且没有底部标签栏，单手够不到顶部。</li>
+  </ul>
+
+  <h3 class="sub">改完的形态</h3>
+  <div class="grid3">
+    <div class="card" style="margin:0">
+      <div class="tag-inline">01 统一语言</div>
+      <p style="margin:8px 0 0;font-size:13px;color:var(--s7)">一套 token 贯穿全站：石墨黑结构色、信号黄交互色、钢灰中性阶、2px 硬边、发丝线替代阴影。Element Plus 通过 <code>--el-*</code> 变量整体对齐，<b>不改任何页面结构</b>。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">02 任务导航</div>
+      <p style="margin:8px 0 0;font-size:13px;color:var(--s7)">侧栏重组为「日常 / 维修 / 盘点 / 数据 / 系统」五组；维修入口收敛为 2 项，其余视图在页面内用分段切换承载。<b>路由一行不改</b>，深链全部保留。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">03 移动优先</div>
+      <p style="margin:8px 0 0;font-size:13px;color:var(--s7)">补底部标签栏（工作台 / 资产 / 扫码 / 维修），扫码从抽屉里提到一级；报修走右下悬浮按钮。云之家免登的只读会话不显示标签栏。</p>
+    </div>
+  </div>
+
+  <div class="note ok">
+    <b>投入产出比最高的第一步：</b>新增一个 <code>web/src/styles/tokens.css</code>（约 120 行），覆盖 Element Plus 的主题变量。这一步不碰任何页面组件，却能让 26 个视图同时从「默认蓝」变成「工业简约」，是全案性价比最高的一刀。
+  </div>
+</section>
+
+<!-- ============ 1 现状诊断 ============ -->
+<section id="s1">
+  <h2 class="sec"><span class="n">01</span>现状诊断</h2>
+  <p class="sec-sub">以下每一条都来自对真实源码的读取，附文件与行号，可直接复核。</p>
+
+  <h3 class="sub">1.1 视觉断层：登录页与内页是两套语言</h3>
+  <table>
+    <thead><tr><th>维度</th><th>登录页（已改版）</th><th>内页（现状）</th></tr></thead>
+    <tbody>
+      <tr><td>强调色</td><td class="mono">#f5b301 信号黄</td><td class="mono">#409eff Element 默认蓝</td></tr>
+      <tr><td>结构色</td><td class="mono">#14171b 石墨黑</td><td class="mono">#2b3245 蓝紫灰（侧栏）</td></tr>
+      <tr><td>圆角</td><td class="mono">2px 硬边</td><td class="mono">8px（EP 默认）</td></tr>
+      <tr><td>分隔</td><td>1px 发丝线 + 四角 crop marks</td><td>默认投影 + 8px 圆角卡片</td></tr>
+      <tr><td>字体角色</td><td>等宽字体承担技术注记</td><td>全站无等宽字体，编码/金额不对齐</td></tr>
+    </tbody>
+  </table>
+  <p>证据：<code>Login.vue</code> 定义了完整的 <code>--ink/--steel-*/--signal</code> 令牌，但作用域限定在 <code>.login-page</code>；<code>Main.vue:69</code> 的 <code>.aside{background:#2b3245}</code> 与 <code>Main.vue:80</code> 的 <code>#232a3b</code> 是另一套完全独立的深色值。</p>
+
+  <h3 class="sub">1.2 导航按模块组织，且靠权限位隐式表达角色</h3>
+  <p><code>SideMenu.vue</code> 共 12 个一级项，全部平铺、无分组、仅两层。维修相关的三项尤其容易混淆：</p>
+  <table>
+    <thead><tr><th>菜单文案</th><th>权限位</th><th>实际去向</th><th>用户需要先知道什么</th></tr></thead>
+    <tbody>
+      <tr><td>我的报修</td><td class="mono">repair.report</td><td class="mono">/repairs/mine</td><td>「我提交的单」</td></tr>
+      <tr><td>我的维修</td><td class="mono">repair.handle</td><td class="mono">/repairs?mine=1</td><td>「派给我处理的单」</td></tr>
+      <tr><td>维修管理</td><td class="mono">repair.dispatch</td><td class="mono">/repairs</td><td>「全量维修单」</td></tr>
+    </tbody>
+  </table>
+  <p>三者语义分别是「我提交的 / 我处理的 / 全部」，但文案只差一个字。用户必须先知道自己持有哪些角色，才能推断该点哪个——这是典型的<b>把实现细节暴露给用户</b>。</p>
+  <p>值得注意的是，<code>Home.vue</code> 里已经有一段正确处理这件事的逻辑 <code>repairEntry</code> computed：按权限优先级决定入口标题与去向。它证明了正确做法，但只在工作台生效，侧栏没跟上。</p>
+
+  <h3 class="sub">1.3 类型尺度失控</h3>
+  <p>全站 <code>font-size</code> 出现 9 个不同值，且没有 token：</p>
+  <div class="grid4">
+    <div class="kpi"><div class="k">字号值</div><div class="v" style="font-size:17px">13 14 15 16 18 20 22 24 26<small> px</small></div></div>
+    <div class="kpi"><div class="k">层级语义</div><div class="v" style="font-size:17px">无</div></div>
+  </div>
+  <p>典型症状：<code>Main.vue:77</code> 品牌标题 15px，<code>Home.vue</code> 页面标题 22px，列表页标题 20px——同一层级的元素在不同页面尺寸不同。用户感知到的不是「丰富」，而是「不整齐」。</p>
+
+  <h3 class="sub">1.4 列表工具栏 12 个控件平铺，无主次</h3>
+  <p><code>asset/List.vue</code> 工具栏从左到右依次是：批量 · 新建 · 编辑 · 调整状态▾ · 删除 · 打印标签 · 导出 · 扫码 · 弹性空隙 · 搜索框 · 高级搜索 · 列配置。</p>
+  <ul class="clean">
+    <li class="no">主操作「新建」排在第 2 位，被低频的「批量」压在前面。</li>
+    <li class="no">「批量 / 编辑 / 删除」是<b>模式性动作</b>，却在未选中任何行时也常驻，点了才提示「请先选择」。</li>
+    <li class="no">搜索框被挤在右侧、宽度受限，而检索是最高频动作。</li>
+  </ul>
+  <p>这违反 <b>Hick 定律</b>：选项越多、决策越慢；也违反「主操作应当唯一且显眼」的通行做法。</p>
+
+  <h3 class="sub">1.5 移动端没有一级导航</h3>
+  <p><code>Main.vue:23</code> 移动端只有一个汉堡按钮打开 <code>el-drawer</code>。问题有三：</p>
+  <ul class="clean">
+    <li class="no"><b>两步才到扫码。</b><code>SideMenu.vue:11</code> 的扫码项 <code>v-if="isMobile"</code>——说明产品已经意识到移动端才需要扫码，却把它藏在抽屉里。</li>
+    <li class="no"><b>拇指够不到顶部。</b>汉堡按钮在左上角，单手竖握时是屏幕最难点到的位置之一。</li>
+    <li class="no"><b>没有「当前在哪」的持续提示。</b>抽屉关闭后无任何导航状态可见。</li>
+  </ul>
+
+  <h3 class="sub">1.6 深色侧栏的选中态缺失，品牌区与登录页断裂</h3>
+  <ul class="clean">
+    <li class="no"><code>SideMenu.vue:67</code> <code>.menu{border-right:none}</code>——Element 默认的选中态右侧指示条被去掉了，只靠背景色变化区分，弱。</li>
+    <li class="no"><code>Main.vue:4</code> 品牌区是纯文字「固定资产台账」，没有任何标识；登录页已经接了集团 logo 铭牌，两侧不连贯。</li>
+    <li class="no">顶栏只有角色标签和用户下拉，没有面包屑或页面标题——进入 <code>/master/category</code> 这类深层页面后，顶栏无法回答「我在哪」。</li>
+  </ul>
+
+  <h3 class="sub">1.7 哪些不该动（同样重要）</h3>
+  <p>诊断不是「全盘否定」。以下经核实是<b>好的设计</b>，方案必须保留：</p>
+  <div class="grid2">
+    <div class="card" style="margin:0">
+      <h4 class="sub2" style="margin-top:0">保留：信息密度</h4>
+      <p style="font-size:13px;margin:0;color:var(--s7)">表格行高、字号密度适合企业台账场景。桌面端一屏能看到 12+ 行是正确的，不要为了「呼吸感」把它改成 6 行。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <h4 class="sub2" style="margin-top:0">保留：双端有意分叉</h4>
+      <p style="font-size:13px;margin:0;color:var(--s7)"><code>List.vue</code> 桌面用表格 + 分页、窄屏改用 <code>.m-card</code> 卡片列表，源码注释已说明「列配置对卡片没有意义」。分叉是对的，缺的是统一视觉语言。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <h4 class="sub2" style="margin-top:0">保留：对比度达标</h4>
+      <p style="font-size:13px;margin:0;color:var(--s7)">现有配色对比度优于 WCAG AA。改造中任何新配色都必须复测，不能为了「高级灰」把文字压到 4.5:1 以下。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <h4 class="sub2" style="margin-top:0">保留：工作台结构</h4>
+      <p style="font-size:13px;margin:0;color:var(--s7)">问候条 / 待我处理 / 概览卡 / 快捷入口四段结构清晰，<code>repairEntry</code> 逻辑正确。只需统一视觉，不动结构。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 设计原则 ============ -->
+<section id="s2">
+  <h2 class="sec"><span class="n">02</span>设计原则</h2>
+  <p class="sec-sub">五条原则，后续每一个决策都可以回溯到其中一条。</p>
+
+  <div class="grid2">
+    <div class="card" style="margin:0">
+      <div class="tag-inline">原则 01</div>
+      <h3 class="sub" style="border-left-color:var(--ink);margin:8px 0 10px">任务优先于模块</h3>
+      <p style="margin:0;font-size:13px;color:var(--s7)">导航回答「我要做什么」，不回答「系统里有什么」。维修三入口收敛、盘点两项分组、基础数据折叠，都是这条原则的直接结果。</p>
+      <p class="hint" style="margin-top:8px">依据：<b>Jakob 定律</b>——用户把大部分时间花在别的系统上，期望本系统遵循同样的心理模型。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">原则 02</div>
+      <h3 class="sub" style="border-left-color:var(--ink);margin:8px 0 10px">一屏一个主按钮</h3>
+      <p style="margin:0;font-size:13px;color:var(--s7)">每屏最多一个实心黑按钮。其余动作降级为描边或纯文字，危险动作额外加确认。工具栏里常驻的「批量」改为选中后才浮出的操作条。</p>
+      <p class="hint" style="margin-top:8px">依据：<b>Hick 定律</b>——选项数量增加，决策时间对数上升。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">原则 03</div>
+      <h3 class="sub" style="border-left-color:var(--ink);margin:8px 0 10px">工业语汇，克制表达</h3>
+      <p style="margin:0;font-size:13px;color:var(--s7)">沿用登录页：石墨黑 + 信号黄 + 2px 硬边 + 发丝线。去掉圆润的 8px 圆角与默认投影——工业感来自「精确」而非「装饰」。</p>
+      <p class="hint" style="margin-top:8px">这不是审美偏好：硬边与发丝线在高密度表格里比投影更少干扰，扫描效率更高。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">原则 04</div>
+      <h3 class="sub" style="border-left-color:var(--ink);margin:8px 0 10px">数据用等宽，标签用无衬线</h3>
+      <p style="margin:0;font-size:13px;color:var(--s7)">资产编码、金额、日期、单据号一律等宽字体并右对齐。等宽让数字位对齐，用户能一眼看出量级差异；无衬线中文承担标签，保证可读性。</p>
+      <p class="hint" style="margin-top:8px">依据：表格数字对齐是财务/台账类界面的基础要求，也是「专业感」的主要来源之一。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">原则 05</div>
+      <h3 class="sub" style="border-left-color:var(--ink);margin:8px 0 10px">移动端是一等公民</h3>
+      <p style="margin:0;font-size:13px;color:var(--s7)">高频动作（扫码、报修）必须一步直达且落在拇指区。底部标签栏固定 4 项，其余走抽屉。云之家免登的只读会话不显示标签栏。</p>
+      <p class="hint" style="margin-top:8px">依据：<b>Fitts 定律</b>——目标越小越远，命中越慢；底部是单手竖握的最优区域。</p>
+    </div>
+    <div class="card" style="margin:0;border-left:3px solid var(--signal)">
+      <div class="tag-inline">贯穿全案的硬约束</div>
+      <h3 class="sub" style="border-left:0;margin:8px 0 10px;padding-left:0">只改呈现，不改契约</h3>
+      <p style="margin:0;font-size:13px;color:var(--s7)">本方案<b>不改动任何路由 path 或 route name</b>。云之家待办深链形如 <code>#/repairs/2019</code> 已经发到员工手机上，一旦改名全部失效。导航只改「怎么显示」，不改「去哪」。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 信息架构 ============ -->
+<section id="s3">
+  <h2 class="sec"><span class="n">03</span>信息架构与导航</h2>
+  <p class="sec-sub">把 12 项平铺改为 5 组任务；把维修三入口收敛为 2 项；把扫码提到移动端一级。</p>
+
+  <h3 class="sub" id="s3-1">3.1 导航分组：从「模块清单」到「任务地图」</h3>
+
+  <div class="compare">
+    <div>
+      <div class="ch before">现状 · 12 项平铺</div>
+      <div class="mininav">
+        <div class="r"><span class="d"></span>首页</div>
+        <div class="r"><span class="d"></span>资产列表</div>
+        <div class="r"><span class="d"></span>扫码<span class="num">仅移动端</span></div>
+        <div class="r"><span class="d"></span>批量导入</div>
+        <div class="r"><span class="d"></span>金蝶同步</div>
+        <div class="r"><span class="d"></span>盘点管理</div>
+        <div class="r"><span class="d"></span>我的盘点</div>
+        <div class="r"><span class="d"></span>我的报修</div>
+        <div class="r"><span class="d"></span>我的维修</div>
+        <div class="r"><span class="d"></span>维修管理</div>
+        <div class="r"><span class="d"></span>基础数据 ▾<span class="num">4 子项</span></div>
+        <div class="r"><span class="d"></span>用户管理</div>
+      </div>
+      <p class="hint">无分组、无层级；资产 / 盘点 / 维修 / 系统四类混排。</p>
+    </div>
+    <div>
+      <div class="ch after">方案 · 5 组 · 最多 3 项/组</div>
+      <div class="mininav">
+        <div class="r grp">日常</div>
+        <div class="r hl"><span class="d" style="background:var(--signal)"></span>工作台</div>
+        <div class="r"><span class="d"></span>资产台账</div>
+        <div class="r grp">维修</div>
+        <div class="r"><span class="d"></span>报修申请</div>
+        <div class="r"><span class="d"></span>维修工单 <span class="num">按角色定标题</span></div>
+        <div class="r grp">盘点</div>
+        <div class="r"><span class="d"></span>盘点计划</div>
+        <div class="r"><span class="d"></span>我的盘点</div>
+        <div class="r grp">数据</div>
+        <div class="r"><span class="d"></span>批量导入</div>
+        <div class="r"><span class="d"></span>金蝶同步</div>
+        <div class="r grp">系统</div>
+        <div class="r"><span class="d"></span>基础数据 ▾<span class="num">4 子项</span></div>
+        <div class="r"><span class="d"></span>用户管理</div>
+      </div>
+      <p class="hint">分组标题按权限自动隐藏——低权限账号看不到空组。</p>
+    </div>
+  </div>
+
+  <h4 class="sub2">分组可见性规则（关键实现约束）</h4>
+  <p>分组不能硬编码显示，否则 <code>employee</code> 账号会看到一堆空组。规则是：<b>组内可见项为 0 时整组不渲染</b>。各角色的实际侧栏如下：</p>
+  <table>
+    <thead><tr><th>角色</th><th>日常</th><th>维修</th><th>盘点</th><th>数据</th><th>系统</th></tr></thead>
+    <tbody>
+      <tr><td>管理员 admin</td><td>工作台 · 资产台账</td><td>报修申请 · 维修工单</td><td>盘点计划 · 我的盘点</td><td>批量导入 · 金蝶同步</td><td>基础数据 · 用户管理</td></tr>
+      <tr><td>资产管理员</td><td>工作台 · 资产台账</td><td>报修申请 · 维修工单</td><td>盘点计划 · 我的盘点</td><td>批量导入</td><td>基础数据</td></tr>
+      <tr><td>维护人员</td><td>工作台 · 资产台账</td><td>维修工单</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>盘点员</td><td>工作台 · 资产台账</td><td>报修申请</td><td>我的盘点</td><td>—</td><td>—</td></tr>
+      <tr><td>部门负责人</td><td>工作台 · 资产台账</td><td>报修申请</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>员工</td><td>工作台 · 资产台账</td><td>报修申请 · 维修工单</td><td>—</td><td>—</td><td>—</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    员工的「维修工单」标题为<b>「我的报修单」</b>、去向 <code>/repairs/mine</code>——这正是下面 3.2 的收敛规则。
+  </div>
+
+  <h3 class="sub" id="s3-2">3.2 维修入口收敛：一个入口，按角色定标题</h3>
+  <p>把「我的报修 / 我的维修 / 维修管理」三项收敛为<b>两项</b>：一个创建动作，一个查看动作。查看动作的标题与去向由权限优先级决定。</p>
+
+  <table>
+    <thead><tr><th>权限条件（优先级从上到下）</th><th>菜单标题</th><th>去向</th><th>页面内分段切换</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">repair.dispatch || repair.manage</td><td><b>维修工单</b></td><td class="mono">/repairs</td><td>全部 · 待我处理 · 我提交的</td></tr>
+      <tr><td class="mono">repair.handle</td><td><b>待我处理</b></td><td class="mono">/repairs?mine=1</td><td>待我处理 · 我提交的</td></tr>
+      <tr><td class="mono">repair.report（兜底）</td><td><b>我的报修单</b></td><td class="mono">/repairs/mine</td><td>我提交的</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note ok">
+    <b>这段逻辑已经写好了，不需要新写。</b><code>Home.vue</code> 的 <code>repairEntry</code> computed 已经实现了完全相同的优先级判断。落地时只需把它从 <code>Home.vue</code> 提到一个共享模块（如 <code>composables/useRepairEntry.ts</code>），侧栏与工作台共用同一份，避免两处漂移。
+  </div>
+
+  <h4 class="sub2">为什么是「收敛 + 页内切换」而不是「保留三项」</h4>
+  <ul class="clean">
+    <li class="sig"><b>多角色用户不再丢视图。</b>一个账号同时持有 <code>asset_manager</code> 和 <code>maintainer</code> 时，旧方案按优先级只给一个入口，另一类视图被隐藏。改为页内分段切换后，三个视图都在同一个页面里可切换。</li>
+    <li class="sig"><b>导航项数与角色解耦。</b>侧栏项数不再随权限组合变化，视觉稳定，用户换角色后不需要重新学习导航结构。</li>
+    <li class="sig"><b>符合用户心理模型。</b>用户想的是「看维修单」一件事，而不是「我的维修」和「维修管理」两件事。</li>
+  </ul>
+
+  <h3 class="sub" id="s3-3">3.3 移动端底部标签栏</h3>
+  <p>桌面端侧栏保持现状（固定 186–200px），移动端补一个 4 格底部标签栏，把最高频的动作提到拇指区。</p>
+
+  <table>
+    <thead><tr><th>位置</th><th>标签</th><th>去向</th><th>显示条件</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>工作台</td><td class="mono">/</td><td>始终</td></tr>
+      <tr><td>2</td><td>资产</td><td class="mono">/assets</td><td>始终</td></tr>
+      <tr><td>3</td><td><b>扫码</b></td><td class="mono">/scan</td><td>始终（这是本轮最重要的改动）</td></tr>
+      <tr><td>4</td><td>维修</td><td>同 3.2 的角色规则</td><td class="mono">repair.* 任一</td></tr>
+    </tbody>
+  </table>
+
+  <h4 class="sub2">三条必须遵守的实现约束</h4>
+  <ul class="clean">
+    <li class="ok"><b>只读会话不显示。</b><code>auth.readonly</code>（云之家深链免登）为真时，侧栏与抽屉都已经隐藏，标签栏必须同样隐藏，否则出现「能点但点了 403」。</li>
+    <li class="ok"><b>主内容区要留出底部空间。</b>标签栏固定 52px + <code>env(safe-area-inset-bottom)</code>，<code>.main</code> 需相应增加 <code>padding-bottom</code>，否则列表最后一行被遮住。</li>
+    <li class="ok"><b>抽屉保留。</b>标签栏只放 4 项高频，完整菜单仍在汉堡抽屉里——标签栏是<b>补充</b>不是替代，这样低权限账号也不会有空位。</li>
+  </ul>
+
+  <div class="note warn">
+    <b>注意 <code>useIsMobile</code> 的定义：</b><code>(max-width: 767px), (max-height: 520px)</code>。第二个条件是<b>高度</b>断点，用于兜住横屏手机。标签栏必须挂在同一个 <code>isMobile</code> 判断上，否则横屏手机竖屏切换时会出现「有侧栏又没标签栏」的中间态。
+  </div>
+
+  <h3 class="sub" id="s3-4">3.4 完整路由映射表（路由零改动）</h3>
+  <p>下表用于核对：<b>左列的所有 path 与 route name 保持原样</b>，只改导航呈现与分组。云之家深链依赖这些值。</p>
+  <table>
+    <thead><tr><th>route name</th><th>path（不变）</th><th>新导航位置</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">home</td><td class="mono">/</td><td>日常 › 工作台</td><td>原「首页」</td></tr>
+      <tr><td class="mono">assets</td><td class="mono">/assets</td><td>日常 › 资产台账</td><td>原「资产列表」</td></tr>
+      <tr><td class="mono">asset-new</td><td class="mono">/assets/new</td><td>页内（列表主按钮）</td><td>不进导航</td></tr>
+      <tr><td class="mono">asset-edit</td><td class="mono">/assets/:id/edit</td><td>页内</td><td>不进导航</td></tr>
+      <tr><td class="mono">asset-labels</td><td class="mono">/assets/labels</td><td>页内（更多▾）</td><td>打印标签</td></tr>
+      <tr><td class="mono">scan</td><td class="mono">/scan</td><td>日常（移动端）/ 标签栏</td><td>桌面端仍不显示</td></tr>
+      <tr><td class="mono">import</td><td class="mono">/import</td><td>数据 › 批量导入</td><td>原「批量导入」</td></tr>
+      <tr><td class="mono">sync</td><td class="mono">/sync</td><td>数据 › 金蝶同步</td><td>—</td></tr>
+      <tr><td class="mono">count</td><td class="mono">/count</td><td>盘点 › 盘点计划</td><td>原「盘点管理」</td></tr>
+      <tr><td class="mono">count-mine</td><td class="mono">/count/mine</td><td>盘点 › 我的盘点</td><td>—</td></tr>
+      <tr><td class="mono">count-detail</td><td class="mono">/count/:id</td><td>页内</td><td>不进导航</td></tr>
+      <tr><td class="mono">repair-new</td><td class="mono">/repairs/new</td><td>维修 › 报修申请</td><td>从页内按钮提升为显式入口</td></tr>
+      <tr><td class="mono">repair-mine</td><td class="mono">/repairs/mine</td><td>维修 › 维修工单（兜底去向）</td><td>—</td></tr>
+      <tr><td class="mono">repairs</td><td class="mono">/repairs</td><td>维修 › 维修工单</td><td>页内加分段切换</td></tr>
+      <tr><td class="mono">repair-detail</td><td class="mono">/repairs/:id</td><td>页内</td><td><b>深链入口，绝不可改</b></td></tr>
+      <tr><td class="mono">users</td><td class="mono">/users</td><td>系统 › 用户管理</td><td>—</td></tr>
+      <tr><td class="mono">master-category</td><td class="mono">/master/category</td><td>系统 › 基础数据</td><td>—</td></tr>
+      <tr><td class="mono">master-area</td><td class="mono">/master/area</td><td>系统 › 基础数据</td><td>—</td></tr>
+      <tr><td class="mono">master-org</td><td class="mono">/master/org</td><td>系统 › 基础数据</td><td>—</td></tr>
+      <tr><td class="mono">master-vendor</td><td class="mono">/master/vendor</td><td>系统 › 基础数据</td><td>—</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 4 视觉系统 ============ -->
+<section id="s4">
+  <h2 class="sec"><span class="n">04</span>视觉系统</h2>
+  <p class="sec-sub">把登录页的令牌提升为全站 token，并通过 Element Plus 的 CSS 变量整体注入——一个文件覆盖 26 个视图。</p>
+
+  <h3 class="sub" id="s4-1">4.1 色彩</h3>
+  <p>四类角色分明：<b>石墨黑 = 结构</b>（侧栏、主按钮、标题），<b>信号黄 = 交互反馈</b>（聚焦环、选中指示条、hover），<b>钢灰 = 中性信息层级</b>，<b>语义色 = 状态</b>。</p>
+
+  <h4 class="sub2">结构色与中性阶</h4>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#14171b"></div><div class="lb"><b>--ink</b><span>#14171b</span>结构色 / 主文字</div></div>
+    <div class="sw"><div class="chip" style="background:#1c2127"></div><div class="lb"><b>--ink-2</b><span>#1c2127</span>悬浮态</div></div>
+    <div class="sw"><div class="chip" style="background:#3d454f"></div><div class="lb"><b>--steel-700</b><span>#3d454f</span>正文次级</div></div>
+    <div class="sw"><div class="chip" style="background:#5c6470"></div><div class="lb"><b>--steel-600</b><span>#5c6470</span>辅助文字</div></div>
+    <div class="sw"><div class="chip" style="background:#6b7480"></div><div class="lb"><b>--steel-500</b><span>#6b7480</span>说明文字</div></div>
+    <div class="sw"><div class="chip" style="background:#8d959f"></div><div class="lb"><b>--steel-400</b><span>#8d959f</span>占位符</div></div>
+    <div class="sw"><div class="chip" style="background:#c3c9d0"></div><div class="lb"><b>--steel-300</b><span>#c3c9d0</span>强边框</div></div>
+    <div class="sw"><div class="chip" style="background:#dde1e6"></div><div class="lb"><b>--steel-200</b><span>#dde1e6</span>发丝线</div></div>
+    <div class="sw"><div class="chip" style="background:#eef1f4"></div><div class="lb"><b>--steel-100</b><span>#eef1f4</span>表头 / 条纹</div></div>
+    <div class="sw"><div class="chip" style="background:#f6f7f9"></div><div class="lb"><b>--paper</b><span>#f6f7f9</span>页面底色</div></div>
+    <div class="sw"><div class="chip" style="background:#fff;box-shadow:inset 0 0 0 1px #dde1e6"></div><div class="lb"><b>--surface</b><span>#ffffff</span>卡片面</div></div>
+  </div>
+
+  <h4 class="sub2">强调色与语义色</h4>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#f5b301"></div><div class="lb"><b>--signal</b><span>#f5b301</span>交互反馈（唯一强调色）</div></div>
+    <div class="sw"><div class="chip" style="background:#cf9700"></div><div class="lb"><b>--signal-d</b><span>#cf9700</span>黄底上的文字</div></div>
+    <div class="sw"><div class="chip" style="background:#2f8f4e"></div><div class="lb"><b>--ok</b><span>#2f8f4e</span>成功 / 在用</div></div>
+    <div class="sw"><div class="chip" style="background:#c9781a"></div><div class="lb"><b>--warn</b><span>#c9781a</span>警告 / 借用</div></div>
+    <div class="sw"><div class="chip" style="background:#c0392b"></div><div class="lb"><b>--danger</b><span>#c0392b</span>危险 / 报废</div></div>
+    <div class="sw"><div class="chip" style="background:#5c6470"></div><div class="lb"><b>--info</b><span>#5c6470</span>中性信息 / 调拨中</div></div>
+  </div>
+
+  <div class="note warn">
+    <b>语义色比 Element 默认值整体压暗。</b>EP 默认的 <code>#67c23a</code> / <code>#e6a23c</code> / <code>#f56c6c</code> 饱和度太高，与工业简约的克制基调冲突，且在白色卡片上显得刺眼。压暗后的值在 <code>#fff</code> 上的对比度全部超过 4.5:1，可直接用于文字与图标。落地时通过 <code>--el-color-success</code> 等变量覆盖，<b>不逐页改 class</b>。
+  </div>
+
+  <h3 class="sub" id="s4-2">4.2 类型尺度</h3>
+  <p>把现有 9 个字号值收敛为 8 档，每档有明确语义。中文界面最小可读字号为 11px，故 11px 只用于微标与单位，不承载正文。</p>
+
+  <div class="typescale">
+    <div class="row"><div class="tk">--t-32<em>32px</em></div><div style="font:500 32px/1.2 var(--mono);letter-spacing:-.02em">1,284 <span style="font:400 13px/1 var(--sans);color:var(--s5)">工作台大数</span></div></div>
+    <div class="row"><div class="tk">--t-24<em>24px</em></div><div style="font:500 24px/1.3 var(--sans);letter-spacing:-.01em">资产台账 <span style="font:400 13px/1 var(--sans);color:var(--s5)">区块大标题</span></div></div>
+    <div class="row"><div class="tk">--t-20<em>20px</em></div><div style="font:600 20px/1.3 var(--sans)">页面标题 <span style="font:400 13px/1 var(--sans);color:var(--s5)">每个视图的 h1</span></div></div>
+    <div class="row"><div class="tk">--t-16<em>16px</em></div><div style="font:600 16px/1.4 var(--sans)">卡片标题 <span style="font:400 13px/1 var(--sans);color:var(--s5)">区块内标题</span></div></div>
+    <div class="row"><div class="tk">--t-14<em>14px</em></div><div style="font:400 14px/1.6 var(--sans)">正文基准 <span style="color:var(--s5)">说明段落、表单标签</span></div></div>
+    <div class="row"><div class="tk">--t-13<em>13px</em></div><div style="font:400 13px/1.6 var(--sans)">表格内容 <span style="color:var(--s5)">表格单元格、次级信息</span></div></div>
+    <div class="row"><div class="tk">--t-12<em>12px</em></div><div style="font:400 12px/1.5 var(--sans);color:var(--s7)">辅助文字 <span style="color:var(--s5)">标签、统计口径、时间</span></div></div>
+    <div class="row"><div class="tk">--t-11<em>11px</em></div><div style="font:500 11px/1.5 var(--sans);letter-spacing:.06em;color:var(--s6)">表头 · 微标 <span style="color:var(--s5);letter-spacing:0">单位、表格列头</span></div></div>
+  </div>
+
+  <h4 class="sub2">字体族</h4>
+  <div class="card">
+    <div class="drow" style="grid-template-columns:120px 1fr"><div class="dk">界面 / 标签</div><div class="dv" style="font-size:13px">-apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif</div></div>
+    <div class="drow" style="grid-template-columns:120px 1fr;border-bottom:0"><div class="dk">数据 / 编码</div><div class="dv m" style="font-size:13px">ui-monospace, "SFMono-Regular", Consolas, monospace &nbsp;→&nbsp; <code>--u-mono</code></div></div>
+  </div>
+  <p><b>等宽字体的适用范围</b>（这是本方案里「专业感」提升最明显的一处）：</p>
+  <ul class="clean">
+    <li class="sig">资产编码 / 标签编号 / 维修单号</li>
+    <li class="sig">金额、数量、折旧额（一律右对齐）</li>
+    <li class="sig">日期时间（<code>2026-09-24 14:07</code> 定宽，纵向成列）</li>
+    <li class="sig">工作台的大数字与统计值</li>
+  </ul>
+
+  <h3 class="sub" id="s4-3">4.3 间距 · 圆角 · 描边</h3>
+  <div class="grid3">
+    <div class="card" style="margin:0">
+      <div class="tag-inline">间距（4px 基准）</div>
+      <div class="drows" style="padding:10px 0 0">
+        <div class="drow" style="grid-template-columns:80px 1fr"><div class="dk m">4 / 8</div><div class="dv">图标与文字、标签内边距</div></div>
+        <div class="drow" style="grid-template-columns:80px 1fr"><div class="dk m">12 / 16</div><div class="dv">表单字段间距、卡片内边距</div></div>
+        <div class="drow" style="grid-template-columns:80px 1fr"><div class="dk m">20 / 24</div><div class="dv">页面内边距、区块间距</div></div>
+        <div class="drow" style="grid-template-columns:80px 1fr;border-bottom:0"><div class="dk m">32 / 48</div><div class="dv">区块分隔、空状态留白</div></div>
+      </div>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">圆角（统一 2px）</div>
+      <p style="font-size:13px;color:var(--s7);margin:10px 0 0">卡片、输入框、按钮、标签、下拉面板<b>全部 2px</b>。仅头像与状态点用 <code>50%</code>。</p>
+      <p class="hint">覆盖 EP 的 <code>--el-border-radius-base</code> / <code>-small</code> / <code>-round</code> 三个变量即可全站生效，无需逐页改。</p>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">描边与投影</div>
+      <p style="font-size:13px;color:var(--s7);margin:10px 0 0">默认 <b>1px <code>#dde1e6</code> 发丝线</b>；强调用 2px；投影只保留一种 <code>0 1px 3px rgba(20,23,27,.06)</code>，仅用于下拉、抽屉、悬浮操作条。</p>
+      <p class="hint">卡片不再用投影表达层级——用发丝线 + 底色差。这是工业简约与「圆润卡片风」的分界线。</p>
+    </div>
+  </div>
+
+  <h3 class="sub" id="s4-4">4.4 状态色映射与 chip 组件</h3>
+  <p>现状使用 Element 的 <code>el-tag</code> 实心标签表达状态。问题不在颜色映射本身（映射是对的），而在<b>实心色块在高密度表格里形成彩虹噪声</b>——一屏 12 行 × 6 种状态，视觉噪声盖过了数据。</p>
+
+  <div class="compare">
+    <div>
+      <div class="ch before">现状 · 实心 el-tag</div>
+      <div class="card" style="margin:0">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span style="background:#f0f9eb;color:#67c23a;border:1px solid #e1f3d8;font-size:11px;padding:2px 8px;border-radius:4px">闲置</span>
+          <span style="background:#ecf5ff;color:#409eff;border:1px solid #d9ecff;font-size:11px;padding:2px 8px;border-radius:4px">在用</span>
+          <span style="background:#fdf6ec;color:#e6a23c;border:1px solid #faecd8;font-size:11px;padding:2px 8px;border-radius:4px">借用</span>
+          <span style="background:#fdf6ec;color:#e6a23c;border:1px solid #faecd8;font-size:11px;padding:2px 8px;border-radius:4px">维修中</span>
+          <span style="background:#f4f4f5;color:#909399;border:1px solid #e9e9eb;font-size:11px;padding:2px 8px;border-radius:4px">调拨中</span>
+          <span style="background:#fef0f0;color:#f56c6c;border:1px solid #fde2e2;font-size:11px;padding:2px 8px;border-radius:4px">报废</span>
+        </div>
+        <p class="hint" style="margin-bottom:0">EP 默认色 + 4px 圆角 + 浅底实心。六种状态六种底色，噪声大。</p>
+      </div>
+    </div>
+    <div>
+      <div class="ch after">方案 · 点 + 描边 chip</div>
+      <div class="card" style="margin:0">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="chip ok"><i></i>闲置</span>
+          <span class="chip ink"><i></i>在用</span>
+          <span class="chip warn"><i></i>借用</span>
+          <span class="chip warn"><i></i>维修中</span>
+          <span class="chip inf"><i></i>调拨中</span>
+          <span class="chip bad"><i></i>报废</span>
+        </div>
+        <p class="hint" style="margin-bottom:0">统一白底 + 1px 同色系描边 + 6px 状态点。色彩信息仍在，但退到背景层。</p>
+      </div>
+    </div>
+  </div>
+
+  <p>颜色语义与后端 <code>api/meta.ts</code> 的 <code>STATUS_TAG</code> 完全对齐，<b>只改视觉呈现，不改映射关系</b>：</p>
+  <table>
+    <thead><tr><th>资产状态</th><th>meta.ts 原 type</th><th>新 chip 变体</th><th>色值</th></tr></thead>
+    <tbody>
+      <tr><td>闲置</td><td class="mono">success</td><td><span class="chip ok"><i></i>闲置</span></td><td class="mono">#2f8f4e</td></tr>
+      <tr><td>在用</td><td class="mono">primary</td><td><span class="chip ink"><i></i>在用</span></td><td class="mono">#14171b</td></tr>
+      <tr><td>借用</td><td class="mono">warning</td><td><span class="chip warn"><i></i>借用</span></td><td class="mono">#c9781a</td></tr>
+      <tr><td>维修中</td><td class="mono">warning</td><td><span class="chip warn"><i></i>维修中</span></td><td class="mono">#c9781a</td></tr>
+      <tr><td>调拨中</td><td class="mono">info</td><td><span class="chip inf"><i></i>调拨中</span></td><td class="mono">#5c6470</td></tr>
+      <tr><td>报废</td><td class="mono">danger</td><td><span class="chip bad"><i></i>报废</span></td><td class="mono">#c0392b</td></tr>
+    </tbody>
+  </table>
+  <p>维修状态（10 个）同样处理，标签文案沿用 <code>REPAIR_STATUS_LABELS</code> 的现成映射，不做任何改动：</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 20px">
+    <span class="chip inf"><i></i>待受理</span>
+    <span class="chip ink"><i></i>已受理</span>
+    <span class="chip warn"><i></i>待审批</span>
+    <span class="chip ink"><i></i>已派工</span>
+    <span class="chip warn"><i></i>维修中</span>
+    <span class="chip sig" style="border-color:rgba(245,179,1,.5);color:#7a5900"><i style="background:var(--signal)"></i>待确认</span>
+    <span class="chip ok"><i></i>已完工</span>
+    <span class="chip bad"><i></i>已驳回</span>
+    <span class="chip inf"><i></i>已撤单</span>
+    <span class="chip bad"><i></i>报废评估</span>
+  </div>
+  <p class="hint">「待确认」单独用信号黄——它是唯一一个<b>需要当前用户动手</b>的状态（发起人确认完工），用唯一的强调色把它从其余状态里拎出来，是刻意的视觉层级设计。</p>
+</section>
+
+<!-- ============ 5 组件规范 ============ -->
+<section id="s5">
+  <h2 class="sec"><span class="n">05</span>组件规范</h2>
+  <p class="sec-sub">页面骨架、按钮层级、工具栏、表格、空状态。这一节是开发照着写的部分。</p>
+
+  <h3 class="sub">5.1 页面骨架</h3>
+  <p>现状 <code>Main.vue:104</code> 是 <code>.main{padding:0}</code>，每个页面自己管内边距，导致页面间留白不一致。统一为固定骨架：</p>
+  <div class="card">
+    <div style="font:400 12px/1.9 var(--mono);color:var(--s7)">
+      <div>.page &nbsp;→&nbsp; max-width <b>1180px</b>（列表类 1400px）；padding <b>20px 24px 32px</b>；margin 0 auto</div>
+      <div style="padding-left:16px">.page-head &nbsp;→&nbsp; 标题 + 描述 + 右侧主操作；底部 1px 发丝线</div>
+      <div style="padding-left:16px">.page-toolbar &nbsp;→&nbsp; 搜索 / 筛选 / 更多；sticky top 0，白底</div>
+      <div style="padding-left:16px">.page-body &nbsp;→&nbsp; 表格或卡片列表</div>
+      <div style="padding-left:16px">.page-empty &nbsp;→&nbsp; 统一空状态</div>
+    </div>
+  </div>
+  <p><b>顶栏补面包屑。</b><code>Main.vue</code> 顶栏目前只有角色标签与用户下拉。建议在左侧（移动端汉堡按钮之后）加一行面包屑 <span class="mono" style="font-size:12px;color:var(--s5)">基础数据 / 资产分类</span>，由 <code>route.matched</code> 或路由 meta 生成。这解决 1.6 中「进入深层页面不知道自己在哪」的问题，且不增加任何导航层级。</p>
+
+  <h3 class="sub">5.2 按钮层级</h3>
+  <div class="grid2">
+    <div class="card" style="margin:0">
+      <div class="tag-inline">四个层级</div>
+      <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px">
+        <span class="b p">新建资产</span>
+        <span class="b">导出</span>
+        <span class="b t">重置</span>
+        <span class="b d">删除</span>
+      </div>
+      <ul class="clean" style="margin-top:14px;margin-bottom:0">
+        <li><b>primary（黑实心）</b>每屏最多 1 个——最重要动作</li>
+        <li><b>default（描边）</b>次级动作，可多个</li>
+        <li><b>text（纯文字）</b>表格行内、工具栏图标按钮</li>
+        <li><b>danger</b>仅破坏性动作，且必须二次确认</li>
+      </ul>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">hover 与 focus 反馈</div>
+      <p style="font-size:13px;color:var(--s7);margin:12px 0 10px">主按钮 hover <b>翻转为信号黄底黑字</b>——沿用登录页 <code>.submit</code> 的行为，形成跨页面一致的动作反馈。</p>
+      <div style="display:flex;gap:9px">
+        <span class="b p" style="background:var(--signal);border-color:var(--signal);color:var(--ink)">新建资产 <span style="font-size:10px;color:var(--s5)">hover</span></span>
+      </div>
+      <p class="hint" style="margin-top:12px">输入框 focus：信号黄描边 + <code>0 0 0 3px rgba(245,179,1,.15)</code> 外环（登录页已验证的配方）。</p>
+    </div>
+  </div>
+
+  <h3 class="sub">5.3 列表工具栏重排</h3>
+  <p>从「12 个控件平铺」改为「主操作 + 搜索 + 筛选 + 更多」，批量动作改为选中后浮出。</p>
+
+  <div class="compare">
+    <div>
+      <div class="ch before">现状 · 12 项平铺</div>
+      <div class="card" style="margin:0">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span class="b">批量</span><span class="b">新建</span><span class="b">编辑</span><span class="b">调整状态 <i class="cv" style="display:inline-block"></i></span><span class="b">删除</span><span class="b">打印标签</span><span class="b">导出</span><span class="b">扫码</span><span class="search" style="max-width:130px">搜索</span><span class="b">高级搜索</span><span class="b">列配置</span>
+        </div>
+        <p class="hint" style="margin-bottom:0">主操作在第 2 位；模式性动作常驻；搜索框被挤窄。</p>
+      </div>
+    </div>
+    <div>
+      <div class="ch after">方案 · 3 + 1 + 更多</div>
+      <div class="card" style="margin:0">
+        <div class="tools" style="margin-bottom:8px">
+          <span class="b p">新建资产</span>
+          <span class="b">导入</span>
+          <span class="search" style="max-width:200px"><span class="mg"></span>搜索编码 / 名称 / 使用人</span>
+          <span class="b">筛选 <span style="font:500 10px/1 var(--mono);background:var(--ink);color:#fff;padding:2px 5px;border-radius:2px">2</span></span>
+          <span class="b">更多 <i class="cv" style="display:inline-block"></i></span>
+        </div>
+        <p class="hint" style="margin-bottom:0">「更多」收拢 打印标签 / 导出 / 列配置 / 扫码。</p>
+      </div>
+    </div>
+  </div>
+
+  <h4 class="sub2">批量操作：从常驻按钮改为选中浮条</h4>
+  <p>未选中任何行时不显示；选中后从表格底部浮出一条深色操作条。这同时解决两个问题：工具栏降噪，以及「点了才提示请先选择」的挫败感。</p>
+  <div class="mock" style="margin:14px 0 22px">
+    <div class="app" style="grid-template-columns:1fr;min-height:0">
+      <div class="mainc" style="padding:14px">
+        <table class="tbl">
+          <thead><tr><th style="width:30px"></th><th>资产编码</th><th>资产名称</th><th>状态</th><th>使用人</th><th>部门</th></tr></thead>
+          <tbody>
+            <tr class="sel"><td><span class="cb on"></span></td><td class="k">GD-QG-2024-00128</td><td class="nm">数控车床 CK6140</td><td><span class="chip warn"><i></i>维修中</span></td><td>—</td><td>生产一部</td></tr>
+            <tr class="sel"><td><span class="cb on"></span></td><td class="k">GD-QG-2024-00129</td><td class="nm">台式钻床 Z4116</td><td><span class="chip warn"><i></i>维修中</span></td><td>—</td><td>生产一部</td></tr>
+            <tr><td><span class="cb"></span></td><td class="k">GD-QG-2024-00130</td><td class="nm">空气压缩机 0.6/8</td><td><span class="chip ink"><i></i>在用</span></td><td>陈志强</td><td>动力车间</td></tr>
+          </tbody>
+        </table>
+        <div class="floatbar">
+          <span>已选 <b>2</b> 项</span>
+          <span style="color:rgba(255,255,255,.45)">|</span>
+          <span class="fb">调整状态</span>
+          <span class="fb">打印标签</span>
+          <span class="fb">导出所选</span>
+          <span class="sp"></span>
+          <span class="fb">全选本页</span>
+          <span class="fb x">取消</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sub">5.4 表格规范</h3>
+  <div class="grid2">
+    <div class="card" style="margin:0">
+      <ul class="clean" style="margin:0">
+        <li><b>表头</b>：<code>--steel-100</code> 底 + 11px 大写字距 + <code>--steel-600</code> 文字</li>
+        <li><b>行高</b>：标准 44px，密集模式 40px</li>
+        <li><b>斑马纹取消</b>，改为 hover 整行 <code>--steel-100</code>——更干净且不产生额外色阶</li>
+        <li><b>数字列右对齐 + 等宽</b>：金额、数量、编码</li>
+        <li><b>操作列固定右侧</b>，用纯文字按钮</li>
+        <li><b>选中行</b>：<code>rgba(245,179,1,.09)</code> 信号黄浅底</li>
+      </ul>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="tag-inline">对齐示例</div>
+      <table class="tbl" style="margin:12px 0 0">
+        <thead><tr><th>资产名称</th><th style="text-align:right">原值</th><th style="text-align:right">累计折旧</th></tr></thead>
+        <tbody>
+          <tr><td>数控车床 CK6140</td><td class="r">186,400.00</td><td class="r">42,880.00</td></tr>
+          <tr><td>台式钻床 Z4116</td><td class="r">8,600.00</td><td class="r">1,290.00</td></tr>
+          <tr><td>空气压缩机 0.6/8</td><td class="r">24,150.00</td><td class="r">6,037.50</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">等宽 + 右对齐后，小数点与千分位自动成列，量级一眼可辨。</p>
+    </div>
+  </div>
+
+  <h3 class="sub">5.5 空状态与加载态</h3>
+  <p>现状没有统一规范。建议复用一个与登录页呼应的视觉元素——<b>等距立方体线稿</b>（登录页水印同款），配一句说明和一个主操作。</p>
+  <div class="mock" style="margin:14px 0 22px">
+    <div class="app" style="grid-template-columns:1fr;min-height:0">
+      <div class="mainc" style="padding:34px 20px;align-items:center;text-align:center">
+        <svg width="56" height="62" viewBox="0 0 56 62" style="opacity:.32;margin-bottom:14px">
+          <g fill="none" stroke="#5c6470" stroke-width="1.4" stroke-linejoin="round">
+            <path d="M28 4 L52 18 L52 44 L28 58 L4 44 L4 18 Z"/>
+            <path d="M28 4 L28 31 M28 31 L52 18 M28 31 L4 18"/>
+            <path d="M4 44 L28 31 L52 44"/>
+          </g>
+        </svg>
+        <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:5px">还没有符合条件的资产</div>
+        <div style="font-size:12.5px;color:var(--s5);margin-bottom:16px">试试清除筛选条件，或新建一条资产记录</div>
+        <div style="display:flex;gap:9px;justify-content:center"><span class="b p">新建资产</span><span class="b">清除筛选</span></div>
+      </div>
+    </div>
+  </div>
+  <p><b>加载态</b>：表格用骨架屏（<code>--steel-100</code> 底 + 1.4s 脉冲），不用转圈。按钮内联加载用 14px 转圈 + 文字变「处理中…」。<b>关键：</b>报修提交、批量更新这类写操作，按钮必须置为 loading 且不可重复点击——这是当前 26 个视图里需要逐个核对的地方。</p>
+</section>
+
+<!-- ============ 6 页面设计稿 ============ -->
+<section id="s6">
+  <h2 class="sec"><span class="n">06</span>核心页面设计稿</h2>
+  <p class="sec-sub">六个界面的目标形态。设计稿按桌面 1280px / 移动 375px 绘制，标注了关键尺寸与交互。</p>
+
+  <h3 class="sub" id="s6-1">6.1 工作台（首页）</h3>
+  <p>保留现有四段结构（问候 / 待我处理 / 概览 / 快捷入口），统一视觉语言，并补上「我的待办」直连。</p>
+
+  <div class="mock">
+    <div class="mock-bar"><i></i><i></i><i></i><span>FAMS · 工作台</span></div>
+    <div class="app">
+      <div class="snav">
+        <div class="logo"><span class="mark"></span><b>固定资产台账<em>FAMS</em></b></div>
+        <div class="grp">日常</div>
+        <div class="it on"><svg class="ic" viewBox="0 0 17 17"><rect x="2" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="2" y="9.4" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="9.4" width="5.6" height="5.6" rx="0.6"/></svg>工作台</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 1.8 15 5.6 15 11.4 8.5 15.2 2 11.4 2 5.6Z"/><path d="M2 5.6 8.5 9.4 15 5.6"/><path d="M8.5 9.4V15.2"/></svg>资产台账</div>
+        <div class="grp">维修</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 2.3 15.3 14.3H1.7Z"/><path d="M8.5 6.7v3.5"/><path d="M8.5 12.3h.01"/></svg>报修申请</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M15 8.5 11.75 2.87H5.25L2 8.5l3.25 5.63h6.5Z"/><circle cx="8.5" cy="8.5" r="2.6"/></svg>维修工单<span class="badge">3</span></div>
+        <div class="grp">盘点</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><rect x="2" y="3.4" width="2.1" height="2.1"/><rect x="2" y="7.4" width="2.1" height="2.1"/><rect x="2" y="11.4" width="2.1" height="2.1"/><path d="M6.2 4.45h8.3M6.2 8.45h8.3M6.2 12.45h8.3"/></svg>盘点计划</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="6.5"/><path d="M5.4 8.7 7.6 10.9 11.7 6.3"/></svg>我的盘点</div>
+        <div class="grp">数据</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 1.9v8.6"/><path d="M5.1 5.3 8.5 1.9l3.4 3.4"/><path d="M2.2 10.9v2.5a1.4 1.4 0 0 0 1.4 1.4h9.8a1.4 1.4 0 0 0 1.4-1.4v-2.5"/></svg>批量导入</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M13.9 8.5a5.4 5.4 0 1 0-5.4 5.4"/><path d="M13.9 5.1v3.4h-3.4"/></svg>金蝶同步</div>
+        <div class="grp">系统</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M2.5 4.9h12M2.5 12.1h12"/><circle cx="6" cy="4.9" r="1.9"/><circle cx="11" cy="12.1" r="1.9"/></svg>基础数据</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><circle cx="8.5" cy="5.6" r="2.9"/><path d="M2.8 14.7a5.7 5.7 0 0 1 11.4 0"/></svg>用户管理</div>
+      </div>
+      <div class="mainc">
+        <div class="tbar">
+          <span class="crumb">工作台</span>
+          <span class="sp"></span>
+          <span class="rolechip">资产管理员</span>
+          <span class="usr"><i>黄</i>黄永洁 <span style="color:var(--s4);font-size:9px">▾</span></span>
+        </div>
+        <div class="pg">
+          <div style="background:var(--ink);color:#fff;border-radius:2px;padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:14px">
+            <div style="flex:1">
+              <div style="font-size:16px;font-weight:600">下午好，黄永洁</div>
+              <div style="font-size:11px;color:rgba(255,255,255,.5);font-family:var(--mono);margin-top:4px">2026-09-24 星期四 · 资产管理员</div>
+            </div>
+            <span class="b sig">报修</span>
+          </div>
+
+          <div style="font-size:11px;letter-spacing:.12em;color:var(--s5);margin:0 0 9px">待我处理</div>
+          <div class="todos">
+            <div class="todo hot"><div class="tl">待受理报修</div><div class="tv">3</div><div class="tu">需要派工或驳回</div></div>
+            <div class="todo wm"><div class="tl">待确认完工</div><div class="tv">2</div><div class="tu">等待你确认</div></div>
+            <div class="todo wm"><div class="tl">进行中盘点</div><div class="tv">1</div><div class="tu">共 240 项待盘</div></div>
+            <div class="todo cl"><div class="tl">同步异常</div><div class="tv">0</div><div class="tu">最近 7 天</div></div>
+          </div>
+
+          <div style="font-size:11px;letter-spacing:.12em;color:var(--s5);margin:18px 0 0">台账概览</div>
+          <div class="stats">
+            <div class="stat"><div class="k">资产总数</div><div class="v">1,284</div><div class="u">条</div></div>
+            <div class="stat"><div class="k">在用</div><div class="v">1,102</div><div class="u">条</div></div>
+            <div class="stat"><div class="k">维修中</div><div class="v">18</div><div class="u">条</div></div>
+            <div class="stat"><div class="k">原值合计</div><div class="v" style="font-size:16px">¥12,480,300</div><div class="u">元</div></div>
+          </div>
+
+          <div style="font-size:11px;letter-spacing:.12em;color:var(--s5);margin:18px 0 0">快捷入口</div>
+          <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(96px,1fr))">
+            <div class="stat" style="text-align:center;padding:14px 8px"><div class="v" style="font-size:15px">＋</div><div class="k" style="margin-top:5px">新建资产</div></div>
+            <div class="stat" style="text-align:center;padding:14px 8px"><div class="v" style="font-size:15px">▣</div><div class="k" style="margin-top:5px">扫码盘点</div></div>
+            <div class="stat" style="text-align:center;padding:14px 8px"><div class="v" style="font-size:15px">⇅</div><div class="k" style="margin-top:5px">金蝶同步</div></div>
+            <div class="stat" style="text-align:center;padding:14px 8px"><div class="v" style="font-size:15px">◫</div><div class="k" style="margin-top:5px">打印标签</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h4 class="sub2">改动要点</h4>
+  <ul class="clean">
+    <li class="sig"><b>侧栏「维修工单」带角标 3</b>——把「待我处理」的数量直接标在导航上，用户不必进工作台就能看到。角标数字用等宽、信号黄底黑字。</li>
+    <li class="sig"><b>问候条改为石墨黑底</b>（原来是浅色），成为页面的视觉锚点，并承载唯一的黄底主按钮「报修」。</li>
+    <li class="sig"><b>待办卡左侧 3px 竖条承载语义色</b>，0 值整体降为 <code>--steel-300</code>——沿用现有 <code>.todo-bar</code> 结构，只统一色值。</li>
+    <li class="sig"><b>数字全部等宽 + 右对齐</b>，原值合计用 <code>¥12,480,300</code> 而非带小数，减少视觉噪声（精确值在资产详情里看）。</li>
+    <li class="sig"><b>侧栏品牌区接入集团 logo</b>：<code>gcgs.svg</code> 白色单色版 + 「固定资产台账 / FAMS」两行文字，与登录页铭牌呼应。</li>
+  </ul>
+
+  <h3 class="sub" id="s6-2">6.2 资产台账（列表）</h3>
+  <p>本方案改动最集中的一页：工具栏从 12 项降到 5 项，批量操作改为选中浮条，状态改 chip。</p>
+
+  <div class="mock">
+    <div class="mock-bar"><i></i><i></i><i></i><span>FAMS · 资产台账</span></div>
+    <div class="app">
+      <div class="snav">
+        <div class="logo"><span class="mark"></span><b>固定资产台账<em>FAMS</em></b></div>
+        <div class="grp">日常</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><rect x="2" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="2" y="9.4" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="9.4" width="5.6" height="5.6" rx="0.6"/></svg>工作台</div>
+        <div class="it on"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 1.8 15 5.6 15 11.4 8.5 15.2 2 11.4 2 5.6Z"/><path d="M2 5.6 8.5 9.4 15 5.6"/><path d="M8.5 9.4V15.2"/></svg>资产台账</div>
+        <div class="grp">维修</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 2.3 15.3 14.3H1.7Z"/><path d="M8.5 6.7v3.5"/><path d="M8.5 12.3h.01"/></svg>报修申请</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M15 8.5 11.75 2.87H5.25L2 8.5l3.25 5.63h6.5Z"/><circle cx="8.5" cy="8.5" r="2.6"/></svg>维修工单<span class="badge">3</span></div>
+        <div class="grp">盘点</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><rect x="2" y="3.4" width="2.1" height="2.1"/><rect x="2" y="7.4" width="2.1" height="2.1"/><rect x="2" y="11.4" width="2.1" height="2.1"/><path d="M6.2 4.45h8.3M6.2 8.45h8.3M6.2 12.45h8.3"/></svg>盘点计划</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="6.5"/><path d="M5.4 8.7 7.6 10.9 11.7 6.3"/></svg>我的盘点</div>
+        <div class="grp">数据</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 1.9v8.6"/><path d="M5.1 5.3 8.5 1.9l3.4 3.4"/><path d="M2.2 10.9v2.5a1.4 1.4 0 0 0 1.4 1.4h9.8a1.4 1.4 0 0 0 1.4-1.4v-2.5"/></svg>批量导入</div>
+        <div class="it"><svg class="ic" viewBox="0 0 17 17"><path d="M13.9 8.5a5.4 5.4 0 1 0-5.4 5.4"/><path d="M13.9 5.1v3.4h-3.4"/></svg>金蝶同步</div>
+      </div>
+      <div class="mainc">
+        <div class="tbar">
+          <span class="crumb">日常 <span class="arrow">/</span> <b>资产台账</b></span>
+          <span class="sp"></span>
+          <span class="rolechip">资产管理员</span>
+          <span class="usr"><i>黄</i>黄永洁 <span style="color:var(--s4);font-size:9px">▾</span></span>
+        </div>
+        <div class="pg">
+          <div class="ph">
+            <div>
+              <h3>资产台账</h3>
+              <div class="desc">共 1,284 条 · 原值合计 ¥12,480,300.00</div>
+            </div>
+            <span class="sp"></span>
+            <span class="b p">新建资产</span>
+            <span class="b">导入</span>
+            <span class="b">筛选 <span style="font:500 10px/1 var(--mono);background:var(--ink);color:#fff;padding:2px 5px;border-radius:2px">2</span></span>
+            <span class="b">更多 <i class="cv" style="display:inline-block"></i></span>
+          </div>
+          <div class="tools">
+            <span class="search"><span class="mg"></span>搜索编码 / 名称 / 使用人 / 部门</span>
+            <span style="font-size:11px;color:var(--s5)">筛选：生产一部 <span style="color:var(--s3)">×</span> · 维修中 <span style="color:var(--s3)">×</span></span>
+          </div>
+          <table class="tbl">
+            <thead><tr><th style="width:26px"></th><th>资产编码</th><th>资产名称</th><th>状态</th><th>使用人</th><th>部门</th><th style="text-align:right">原值</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><span class="cb"></span></td><td class="k">GD-QG-2024-00128</td><td class="nm">数控车床 CK6140</td><td><span class="chip warn"><i></i>维修中</span></td><td>—</td><td>生产一部</td><td class="r">186,400.00</td><td style="color:var(--s5)">详情</td></tr>
+              <tr><td><span class="cb"></span></td><td class="k">GD-QG-2024-00129</td><td class="nm">台式钻床 Z4116</td><td><span class="chip warn"><i></i>维修中</span></td><td>—</td><td>生产一部</td><td class="r">8,600.00</td><td style="color:var(--s5)">详情</td></tr>
+              <tr><td><span class="cb"></span></td><td class="k">GD-QG-2024-00130</td><td class="nm">空气压缩机 0.6/8</td><td><span class="chip ink"><i></i>在用</span></td><td>陈志强</td><td>动力车间</td><td class="r">24,150.00</td><td style="color:var(--s5)">详情</td></tr>
+              <tr><td><span class="cb"></span></td><td class="k">GD-QG-2024-00131</td><td class="nm">叉车 CPCD30</td><td><span class="chip ok"><i></i>闲置</span></td><td>—</td><td>仓储部</td><td class="r">98,000.00</td><td style="color:var(--s5)">详情</td></tr>
+              <tr><td><span class="cb"></span></td><td class="k">GD-QG-2024-00132</td><td class="nm">数控折弯机 WC67Y</td><td><span class="chip bad"><i></i>报废</span></td><td>—</td><td>生产二部</td><td class="r">312,000.00</td><td style="color:var(--s5)">详情</td></tr>
+              <tr><td><span class="cb"></span></td><td class="k">GD-QG-2024-00133</td><td class="nm">工业除湿机 CFZ-7</td><td><span class="chip inf"><i></i>调拨中</span></td><td>李慧敏</td><td>质检部</td><td class="r">15,800.00</td><td style="color:var(--s5)">详情</td></tr>
+            </tbody>
+          </table>
+          <div class="pager"><span style="margin-right:auto;font-family:var(--mono)">1–20 / 1,284</span><span class="p">‹</span><span class="p on">1</span><span class="p">2</span><span class="p">3</span><span class="p">…</span><span class="p">65</span><span class="p">›</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h4 class="sub2">改动要点</h4>
+  <ul class="clean">
+    <li class="sig"><b>主操作上移到页头右侧</b>，与页面标题同一行——这是「一屏一个主按钮」的落点。</li>
+    <li class="sig"><b>筛选条件以可移除的标签形式回显</b>在搜索框右侧（<code>生产一部 ×</code>），用户随时知道自己在看什么子集。这是现有 <code>.summary-bar</code> 提示「已启用 N 个筛选条件」的升级版——把数量变成具体条件。</li>
+    <li class="sig"><b>表格行 hover 整行高亮</b>，替代斑马纹。</li>
+    <li class="sig"><b>窄屏（&lt;768px）</b>保留现有 <code>.m-card</code> 卡片列表，但卡片改用同一套 chip 与等宽编码，并把「详情」变成整卡可点。</li>
+  </ul>
+  <div class="note warn">
+    <b>不要动的东西：</b><code>List.vue</code> 的 <code>MANUAL_EXCLUDED_STATUSES</code> 逻辑（「维修中 / 调拨中」不可手动改状态，因为次日 00:00 星瀚同步会抹掉本地改动）必须原样保留。视觉改造不能顺手「优化」这条业务约束。
+  </div>
+
+  <h3 class="sub" id="s6-3">6.3 资产详情</h3>
+  <p>现状是纵向长页。建议改为「左内容 + 右粘性操作栏」，让动作始终可见。</p>
+
+  <div class="mock">
+    <div class="mock-bar"><i></i><i></i><i></i><span>FAMS · 资产详情</span></div>
+    <div class="app" style="grid-template-columns:1fr;min-height:0">
+      <div class="mainc">
+        <div class="tbar">
+          <span class="crumb">日常 <span class="arrow">/</span> 资产台账 <span class="arrow">/</span> <b>GD-QG-2024-00128</b></span>
+          <span class="sp"></span>
+          <span class="usr"><i>黄</i>黄永洁</span>
+        </div>
+        <div class="pg">
+          <div class="ph">
+            <div>
+              <h3>数控车床 CK6140</h3>
+              <div class="desc" style="font-family:var(--mono)">GD-QG-2024-00128</div>
+            </div>
+            <span class="sp"></span>
+            <span class="chip warn"><i></i>维修中</span>
+          </div>
+          <div class="detail">
+            <div>
+              <div class="dcard">
+                <h4>基本信息</h4>
+                <div class="drows">
+                  <div class="drow"><div class="dk">资产分类</div><div class="dv">生产设备 / 金属切削机床</div></div>
+                  <div class="drow"><div class="dk">所在区域</div><div class="dv">一号厂房 / 机加工区</div></div>
+                  <div class="drow"><div class="dk">使用人</div><div class="dv">—（维修中已释放）</div></div>
+                  <div class="drow"><div class="dk">使用部门</div><div class="dv">生产一部</div></div>
+                  <div class="drow"><div class="dk">启用日期</div><div class="dv m">2021-06-18</div></div>
+                </div>
+              </div>
+              <div class="dcard">
+                <h4>财务信息 <span style="font-weight:400;color:var(--s5);font-size:10.5px">· 星瀚同步，本地不可改</span></h4>
+                <div class="drows">
+                  <div class="drow"><div class="dk">原值</div><div class="dv m">186,400.00 元</div></div>
+                  <div class="drow"><div class="dk">累计折旧</div><div class="dv m">42,880.00 元</div></div>
+                  <div class="drow"><div class="dk">净值</div><div class="dv m">143,520.00 元</div></div>
+                  <div class="drow"><div class="dk">数量</div><div class="dv m">1 台</div></div>
+                </div>
+              </div>
+              <div class="dcard">
+                <h4>维修记录 <span style="font-weight:400;color:var(--s5);font-size:10.5px">· 2 条</span></h4>
+                <div class="drows">
+                  <div class="drow" style="grid-template-columns:1fr auto"><div class="dv"><span class="chip warn"><i></i>维修中</span> <span style="margin-left:8px">主轴异响，需更换轴承</span></div><div class="dv m" style="color:var(--s5)">09-22</div></div>
+                  <div class="drow" style="grid-template-columns:1fr auto"><div class="dv"><span class="chip ok"><i></i>已完工</span> <span style="margin-left:8px">冷却液管路更换</span></div><div class="dv m" style="color:var(--s5)">05-11</div></div>
+                </div>
+              </div>
+            </div>
+            <div class="rail">
+              <span class="b p">编辑资产</span>
+              <span class="b">报修</span>
+              <span class="b">打印标签</span>
+              <span class="b">调整状态 <i class="cv" style="display:inline-block"></i></span>
+              <div style="height:1px;background:var(--s2);margin:3px 0"></div>
+              <span class="b d">删除资产</span>
+              <div style="font-size:10.5px;color:var(--s5);line-height:1.6;margin-top:6px">最近更新<br><span style="font-family:var(--mono)">2026-09-22 16:40</span><br>操作人 陈志强</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h4 class="sub2">改动要点</h4>
+  <ul class="clean">
+    <li class="sig"><b>右侧操作栏粘性固定</b>，滚动时始终可见——解决长页里动作被滚出视口的问题。</li>
+    <li class="sig"><b>删除类动作与常规动作之间加分隔线</b>，物理隔离，降低误触。</li>
+    <li class="sig"><b>财务信息区块明确标注「星瀚同步，本地不可改」</b>——这是本项目已确认的业务事实（存在「人工维护」与「星瀚托管」两类字段），必须在界面上说清楚，否则用户会反复尝试编辑。</li>
+    <li class="sig"><b>维修记录直接内嵌</b>，不用跳转，每条带状态 chip + 一句话摘要 + 日期。</li>
+  </ul>
+
+  <h3 class="sub" id="s6-4">6.4 报修流程</h3>
+  <p>现状是单页长表单。改为三步式，把「选资产」从下拉框变成扫码/搜索，符合员工真实场景（人站在设备旁边）。</p>
+
+  <div class="mock">
+    <div class="mock-bar"><i></i><i></i><i></i><span>FAMS · 报修申请</span></div>
+    <div class="app" style="grid-template-columns:1fr;min-height:0">
+      <div class="mainc">
+        <div class="tbar"><span class="crumb">维修 <span class="arrow">/</span> <b>报修申请</b></span><span class="sp"></span><span class="usr"><i>黄</i>黄永洁</span></div>
+        <div class="pg" style="max-width:560px">
+          <div class="ph"><div><h3>报修申请</h3><div class="desc">三步完成，提交后自动通知维护人员</div></div></div>
+
+          <div class="steps">
+            <div class="step done"><span class="n">1</span><span class="lt">选择资产</span><span class="ln"></span></div>
+            <div class="step cur"><span class="n">2</span><span class="lt">描述问题</span><span class="ln"></span></div>
+            <div class="step"><span class="n">3</span><span class="lt">确认提交</span></div>
+          </div>
+
+          <div class="card" style="padding:14px 16px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:11px">
+              <span class="chip warn"><i></i>维修中</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600">数控车床 CK6140</div>
+                <div style="font:400 11px/1.4 var(--mono);color:var(--s5);margin-top:2px">GD-QG-2024-00128 · 生产一部</div>
+              </div>
+              <span class="b t" style="font-size:11px">更换</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="fl">故障描述 <em>*</em></div>
+            <div class="ta">主轴运转时有明显异响，转速超过 800r/min 后加剧，疑似轴承磨损…</div>
+            <div class="hint">建议写明现象、发生时机、是否影响生产</div>
+          </div>
+          <div class="two">
+            <div class="field">
+              <div class="fl">紧急程度 <em>*</em></div>
+              <div class="inp">紧急 <span class="cv"></span></div>
+            </div>
+            <div class="field">
+              <div class="fl">期望完成时间</div>
+              <div class="inp ph">选择日期 <span class="cv"></span></div>
+            </div>
+          </div>
+          <div class="field">
+            <div class="fl">附件</div>
+            <div class="inp ph" style="border-style:dashed;justify-content:center;padding:16px">点击上传照片或视频（最多 3 个）</div>
+          </div>
+          <div style="display:flex;gap:9px;margin-top:16px">
+            <span class="b p" style="padding:10px 20px">提交报修</span>
+            <span class="b" style="padding:10px 18px">上一步</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h4 class="sub2">改动要点</h4>
+  <ul class="clean">
+    <li class="sig"><b>选资产优先给扫码。</b>报修的真实场景是「人站在设备旁」，扫码比在下拉框里找编码快一个量级。三条入口按此排序：扫码 → 搜索编码 → 从我的资产列表选。</li>
+    <li class="sig"><b>选中资产后以卡片形式固定展示</b>，带状态 chip——用户随时确认「我报的是哪台」。</li>
+    <li class="sig"><b>紧急程度用分段控件而非下拉</b>（一般 / 紧急 / 停机），三项一眼可比，符合 Hick 定律。</li>
+    <li class="sig"><b>提交按钮 loading 必须锁死</b>。报修提交会触发云之家待办推送（现已改为同步调用），网络慢时用户容易连点，产生重复单据。</li>
+  </ul>
+
+  <h3 class="sub" id="s6-5">6.5 扫码作业</h3>
+  <p>保留现有 <code>Scan.vue</code> 的三条降级路径（取景解码 / 拍照识别 / 手动输码），统一视觉并强化结果反馈。</p>
+
+  <div class="mock">
+    <div class="mock-bar"><i></i><i></i><i></i><span>FAMS · 扫码</span></div>
+    <div class="app" style="grid-template-columns:1fr;min-height:0">
+      <div class="mainc">
+        <div class="tbar"><span class="crumb">日常 <span class="arrow">/</span> <b>扫码</b></span><span class="sp"></span><span class="usr"><i>黄</i>黄永洁</span></div>
+        <div class="pg">
+          <div class="ph"><div><h3>扫码</h3><div class="desc">对准资产标签上的二维码，识别后自动打开资产详情</div></div></div>
+          <div class="scanbody">
+            <div>
+              <div class="viewport">
+                <div class="vframe"><i></i><i></i><i></i><i></i><div class="vscan"></div></div>
+                <div class="vtxt">正在识别… 已处理 8 帧/秒</div>
+              </div>
+              <div style="display:flex;gap:9px;margin-top:12px">
+                <span class="b p" style="flex:1;justify-content:center;padding:11px">拍照识别</span>
+                <span class="b" style="flex:1;justify-content:center;padding:11px">手动输码</span>
+                <span class="b" style="padding:11px 14px">手电筒</span>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:11px;letter-spacing:.12em;color:var(--s5);margin-bottom:9px">最近识别</div>
+              <div class="result" style="margin-bottom:9px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+                  <span class="chip ok"><i></i>闲置</span>
+                  <span style="font:400 10px/1 var(--mono);color:var(--s5);margin-left:auto">刚刚</span>
+                </div>
+                <div style="font-size:12.5px;font-weight:600">叉车 CPCD30</div>
+                <div style="font:400 10.5px/1.5 var(--mono);color:var(--s5)">GD-QG-2024-00131</div>
+              </div>
+              <div class="result" style="border-left-color:var(--s3);margin-bottom:9px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+                  <span class="chip ink"><i></i>在用</span>
+                  <span style="font:400 10px/1 var(--mono);color:var(--s5);margin-left:auto">2 分钟前</span>
+                </div>
+                <div style="font-size:12.5px;font-weight:600">空气压缩机 0.6/8</div>
+                <div style="font:400 10.5px/1.5 var(--mono);color:var(--s5)">GD-QG-2024-00130</div>
+              </div>
+              <div style="font-size:10.5px;color:var(--s5);line-height:1.6;padding:10px 12px;background:var(--s1);border-radius:2px">
+                识别结果按时间倒序保留最近 5 条，方便连续盘点时核对。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h4 class="sub2">改动要点</h4>
+  <ul class="clean">
+    <li class="sig"><b>取景框用四角 crop marks + 信号黄扫描线</b>，与登录页的 crop marks 语汇一致。现有 <code>.frame</code> 已是对的方向，统一配色即可。</li>
+    <li class="sig"><b>结果以左侧色条卡片反馈</b>（绿=识别成功、灰=历史），识别成功用信号黄闪一下再跳转，给用户「扫到了」的确认。</li>
+    <li class="sig"><b>性能常数不动</b>：<code>SCAN_W=480</code> / <code>FRAME_MS=125</code>（约 8fps）/ <code>PHOTO_MAX=1000</code> 是为低端手机调过的，视觉改造不得调整。</li>
+    <li class="sig"><b>新增「最近识别」列表</b>：盘点场景下用户会连续扫几十台，能回看刚扫了什么可以显著降低重复劳动。</li>
+  </ul>
+
+  <h3 class="sub" id="s6-6">6.6 移动端</h3>
+  <p>三个关键界面：工作台（带底部标签栏）、资产卡片列表、扫码直达。</p>
+
+  <div class="phones">
+    <div class="phone">
+      <div class="notch"><i></i></div>
+      <div class="scr">
+        <div class="tb"><span class="sp"></span>工作台<span class="sp"></span></div>
+        <div class="bd">
+          <div class="greetm">
+            <div class="g1">下午好，黄永洁</div>
+            <div class="g2">2026-09-24 星期四 · 资产管理员</div>
+          </div>
+          <div class="mstat">
+            <div class="s"><div class="k">待受理报修</div><div class="v" style="color:var(--danger)">3</div></div>
+            <div class="s"><div class="k">待确认完工</div><div class="v" style="color:var(--warn)">2</div></div>
+          </div>
+          <div style="font-size:10px;letter-spacing:.12em;color:var(--s5);margin:0 0 7px">台账概览</div>
+          <div class="mstat">
+            <div class="s"><div class="k">资产总数</div><div class="v">1,284</div></div>
+            <div class="s"><div class="k">在用</div><div class="v">1,102</div></div>
+          </div>
+          <div style="font-size:10px;letter-spacing:.12em;color:var(--s5);margin:0 0 7px">快捷入口</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+            <div class="s" style="text-align:center;padding:11px 6px"><div style="font-size:14px">＋</div><div class="k" style="margin-top:4px">新建资产</div></div>
+            <div class="s" style="text-align:center;padding:11px 6px"><div style="font-size:14px">▣</div><div class="k" style="margin-top:4px">扫码盘点</div></div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tb-i on"><svg class="ic" viewBox="0 0 17 17"><rect x="2" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="2" y="9.4" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="9.4" width="5.6" height="5.6" rx="0.6"/></svg>工作台</div>
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 1.8 15 5.6 15 11.4 8.5 15.2 2 11.4 2 5.6Z"/><path d="M2 5.6 8.5 9.4 15 5.6"/><path d="M8.5 9.4V15.2"/></svg>资产</div>
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><path d="M2 5.4V2h3.4M11.6 2H15v3.4M15 11.6V15h-3.4M5.4 15H2v-3.4"/><path d="M2 8.5h13"/></svg>扫码</div>
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><path d="M15 8.5 11.75 2.87H5.25L2 8.5l3.25 5.63h6.5Z"/><circle cx="8.5" cy="8.5" r="2.6"/></svg>维修</div>
+        </div>
+      </div>
+      <div class="cap">工作台 · 底部标签栏</div>
+    </div>
+
+    <div class="phone">
+      <div class="notch"><i></i></div>
+      <div class="scr">
+        <div class="tb"><span class="bk"></span>资产台账<span class="sp"></span><span style="font-size:15px;color:var(--s5)">＋</span></div>
+        <div class="bd">
+          <div class="search" style="margin-bottom:10px;max-width:none"><span class="mg"></span>搜索编码 / 名称 / 使用人</div>
+          <div style="display:flex;gap:7px;margin-bottom:11px;font-size:10.5px">
+            <span class="chip warn" style="font-size:10px"><i></i>维修中 <span style="color:var(--s3)">×</span></span>
+            <span class="chip inf" style="font-size:10px"><i></i>生产一部 <span style="color:var(--s3)">×</span></span>
+          </div>
+          <div class="mcard" style="border-left-color:var(--warn)">
+            <div class="mt"><span class="mn">数控车床 CK6140</span><span class="chip warn" style="font-size:9.5px;padding:3px 6px"><i></i>维修中</span></div>
+            <div class="mk">GD-QG-2024-00128</div>
+            <div class="ml"><span>生产一部</span><span>原值 186,400.00</span></div>
+          </div>
+          <div class="mcard" style="border-left-color:var(--warn)">
+            <div class="mt"><span class="mn">台式钻床 Z4116</span><span class="chip warn" style="font-size:9.5px;padding:3px 6px"><i></i>维修中</span></div>
+            <div class="mk">GD-QG-2024-00129</div>
+            <div class="ml"><span>生产一部</span><span>原值 8,600.00</span></div>
+          </div>
+          <div class="mcard" style="border-left-color:var(--ink)">
+            <div class="mt"><span class="mn">空气压缩机 0.6/8</span><span class="chip ink" style="font-size:9.5px;padding:3px 6px"><i></i>在用</span></div>
+            <div class="mk">GD-QG-2024-00130</div>
+            <div class="ml"><span>动力车间</span><span>陈志强</span></div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><rect x="2" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="2" y="9.4" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="9.4" width="5.6" height="5.6" rx="0.6"/></svg>工作台</div>
+          <div class="tb-i on"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 1.8 15 5.6 15 11.4 8.5 15.2 2 11.4 2 5.6Z"/><path d="M2 5.6 8.5 9.4 15 5.6"/><path d="M8.5 9.4V15.2"/></svg>资产</div>
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><path d="M2 5.4V2h3.4M11.6 2H15v3.4M15 11.6V15h-3.4M5.4 15H2v-3.4"/><path d="M2 8.5h13"/></svg>扫码</div>
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><path d="M15 8.5 11.75 2.87H5.25L2 8.5l3.25 5.63h6.5Z"/><circle cx="8.5" cy="8.5" r="2.6"/></svg>维修</div>
+        </div>
+      </div>
+      <div class="cap">资产列表 · 卡片形态</div>
+    </div>
+
+    <div class="phone" style="position:relative">
+      <div class="notch"><i></i></div>
+      <div class="scr">
+        <div class="tb"><span class="bk"></span>扫码<span class="sp"></span></div>
+        <div class="bd" style="padding:0">
+          <div class="viewport" style="min-height:340px;border-radius:0">
+            <div class="vframe"><i></i><i></i><i></i><i></i><div class="vscan"></div></div>
+            <div class="vtxt">对准资产标签上的二维码</div>
+          </div>
+          <div style="padding:12px">
+            <div class="result">
+              <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
+                <span class="chip ok" style="font-size:10px"><i></i>识别成功</span>
+              </div>
+              <div style="font-size:12.5px;font-weight:600">叉车 CPCD30</div>
+              <div style="font:400 10.5px/1.5 var(--mono);color:var(--s5)">GD-QG-2024-00131</div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><rect x="2" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="2" width="5.6" height="5.6" rx="0.6"/><rect x="2" y="9.4" width="5.6" height="5.6" rx="0.6"/><rect x="9.4" y="9.4" width="5.6" height="5.6" rx="0.6"/></svg>工作台</div>
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><path d="M8.5 1.8 15 5.6 15 11.4 8.5 15.2 2 11.4 2 5.6Z"/><path d="M2 5.6 8.5 9.4 15 5.6"/><path d="M8.5 9.4V15.2"/></svg>资产</div>
+          <div class="tb-i on"><svg class="ic" viewBox="0 0 17 17"><path d="M2 5.4V2h3.4M11.6 2H15v3.4M15 11.6V15h-3.4M5.4 15H2v-3.4"/><path d="M2 8.5h13"/></svg>扫码</div>
+          <div class="tb-i"><svg class="ic" viewBox="0 0 17 17"><path d="M15 8.5 11.75 2.87H5.25L2 8.5l3.25 5.63h6.5Z"/><circle cx="8.5" cy="8.5" r="2.6"/></svg>维修</div>
+        </div>
+      </div>
+      <div class="cap">扫码 · 一步直达</div>
+    </div>
+  </div>
+
+  <h4 class="sub2">移动端改动要点</h4>
+  <ul class="clean">
+    <li class="sig"><b>底部标签栏 52px + <code>env(safe-area-inset-bottom)</code></b>，当前项用信号黄顶部 2px 指示条 + 图标染色。这是本方案对移动端体验提升最大的一处。</li>
+    <li class="sig"><b>扫码从「抽屉第 3 项」变成「标签栏第 3 格」</b>——从两步变一步，且落在拇指最舒适的位置。</li>
+    <li class="sig"><b>卡片左侧 3px 竖条承载状态色</b>，与桌面端表格 chip 同色系，跨端语义一致。</li>
+    <li class="sig"><b>资产编码用等宽</b>，卡片内与桌面端同样对齐。</li>
+    <li class="sig"><b>列表页右上角保留「＋」</b>直接新建；报修则在有权限时用右下悬浮按钮（FAB）承载。</li>
+    <li class="warn" style="list-style:none;padding-left:20px"><span style="color:var(--warn)">⚠</span> <b>只读会话（<code>auth.readonly</code>）下标签栏整体隐藏</b>，与侧栏/抽屉同一判断。</li>
+  </ul>
+</section>
+
+<!-- ============ 7 落地路径 ============ -->
+<section id="s7">
+  <h2 class="sec"><span class="n">07</span>落地路径与风险</h2>
+  <p class="sec-sub">六期改造，按「收益 / 风险」排序。每期都可独立上线、独立回滚。</p>
+
+  <table>
+    <thead><tr><th style="width:56px">期次</th><th>内容</th><th>改动文件</th><th>影响面</th><th>回滚</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="mono"><b>P0</b></td>
+        <td><b>令牌层</b>：新增 <code>styles/tokens.css</code>，覆盖 EP 的 <code>--el-*</code> 变量（主色/语义色/圆角/文字色/边框色）</td>
+        <td class="mono">styles/tokens.css<br>main.ts（引入）</td>
+        <td>全站 26 视图同时变色</td>
+        <td>删一行 import</td>
+      </tr>
+      <tr>
+        <td class="mono"><b>P1</b></td>
+        <td><b>导航层</b>：SideMenu 分组 + 选中指示条 + 品牌区接 logo；Main 顶栏加面包屑</td>
+        <td class="mono">SideMenu.vue<br>Main.vue</td>
+        <td>所有已登录页面</td>
+        <td>还原 2 个文件</td>
+      </tr>
+      <tr>
+        <td class="mono"><b>P2</b></td>
+        <td><b>维修收敛</b>：抽出 <code>useRepairEntry</code>，侧栏与工作台共用；<code>/repairs</code> 加分段切换</td>
+        <td class="mono">composables/useRepairEntry.ts<br>SideMenu.vue · Home.vue<br>repair/List.vue</td>
+        <td>维修相关 5 个视图</td>
+        <td>还原 4 个文件</td>
+      </tr>
+      <tr>
+        <td class="mono"><b>P3</b></td>
+        <td><b>移动端</b>：底部标签栏组件 + <code>.main</code> 底部留白 + 只读门控</td>
+        <td class="mono">layouts/TabBar.vue<br>Main.vue</td>
+        <td>所有窄屏会话</td>
+        <td>还原 2 个文件</td>
+      </tr>
+      <tr>
+        <td class="mono"><b>P4</b></td>
+        <td><b>列表层</b>：工具栏重排 + 选中浮条 + 状态 chip 组件 + 筛选标签回显</td>
+        <td class="mono">asset/List.vue<br>components/StatusChip.vue</td>
+        <td>资产 / 维修 / 盘点三个列表</td>
+        <td>还原列表页</td>
+      </tr>
+      <tr>
+        <td class="mono"><b>P5</b></td>
+        <td><b>收口</b>：详情页右栏粘性 + 报修三步式 + 扫码结果面板 + 空状态统一</td>
+        <td class="mono">asset/CardDetail.vue<br>repair/New.vue · scan/Scan.vue</td>
+        <td>3 个视图</td>
+        <td>逐个还原</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note ok">
+    <b>P0 建议立刻做。</b>它不碰任何页面组件、不改任何逻辑，只覆盖主题变量，却能让全站从「默认蓝 + 8px 圆角」变成「工业简约」。做完后立刻用生产截图对比，效果最直观、风险最低。这也是向团队证明「这个方向可行」的最快方式。
+  </div>
+
+  <h3 class="sub">7.1 关键技术实现：Element Plus 变量覆盖</h3>
+  <p>本项目已有成功先例——登录页的 <code>.submit { --el-button-size: 48px }</code> 就是局部覆盖 EP 变量。全站层面只需把覆盖点提到 <code>:root</code>：</p>
+  <div class="card" style="background:var(--ink);border-color:var(--ink)">
+    <pre style="margin:0;font:400 12px/1.7 var(--mono);color:#c8cddb;white-space:pre-wrap;overflow-x:auto">:root {
+  /* 结构色 —— 取代 Element 默认蓝 */
+  --el-color-primary:        #14171b;
+  --el-color-primary-light-3:#3d454f;
+  --el-color-primary-light-5:#6b7480;
+  --el-color-primary-light-7:#c3c9d0;
+  --el-color-primary-light-8:#dde1e6;
+  --el-color-primary-light-9:#eef1f4;
+  --el-color-primary-dark-2: #000000;
+
+  /* 语义色 —— 整体压暗，适配工业基调 */
+  --el-color-success:#2f8f4e;  --el-color-warning:#c9781a;
+  --el-color-danger: #c0392b;  --el-color-error:  #c0392b;
+  --el-color-info:   #5c6470;
+
+  /* 硬边与发丝线 */
+  --el-border-radius-base:2px; --el-border-radius-small:2px;
+  --el-border-radius-round:2px;
+  --el-border-color:#dde1e6;   --el-border-color-light:#eef1f4;
+  --el-border-color-lighter:#eef1f4;
+
+  /* 文字层级 */
+  --el-text-color-primary:#14171b;  --el-text-color-regular:#3d454f;
+  --el-text-color-secondary:#6b7480; --el-text-color-placeholder:#8d959f;
+
+  /* 投影只保留一档 */
+  --el-box-shadow-light:0 1px 3px rgba(20,23,27,.06);
+  --el-font-size-base:14px;
+}</pre>
+  </div>
+  <div class="note warn">
+    <b>⚠️ 一个必须记住的 EP 陷阱：</b><code>.el-button--large</code> 的高度是<b>硬编码</b>的（<code>--el-button-size:40px</code>），不读 <code>--el-component-size-large</code>。所以只覆盖上面这些变量时，输入框会变高而按钮不会——登录页已经踩过这个坑。如果 P0 要统一表单控件高度，必须同时给按钮加 <code>--el-button-size</code>。
+  </div>
+
+  <h3 class="sub">7.2 风险清单</h3>
+  <table>
+    <thead><tr><th style="width:180px">风险</th><th>说明</th><th>应对</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>全站配色突变</b></td>
+        <td>P0 一次性影响 26 个视图，可能有页面依赖「primary = 蓝色」的隐含假设（如自定义的浅蓝底提示条）。</td>
+        <td>用已有能力做全站回归：把 CDP 截图脚本扩展为逐路由截图，改动前后各跑一遍逐页比对。</td>
+      </tr>
+      <tr>
+        <td><b>深色侧栏对比度回退</b></td>
+        <td>侧栏底色从 <code>#2b3245</code> 改为 <code>#14171b</code> 后，次级文字 <code>#c8cddb</code> 的对比度会变化，可能跌破 4.5:1。</td>
+        <td>必须复测。登录页改版时已建立方法：CDP 取 <code>getComputedStyle</code> 真实色、半透明前景先与背景合成再算比值。</td>
+      </tr>
+      <tr>
+        <td><b>权限表漂移</b></td>
+        <td>导航改造会碰到 <code>auth.can()</code> 的调用点。前端 <code>rolePermissions</code> 与后端 <code>model.rolePermissions</code> 必须逐项一致，历史上真实漂移过一次（<code>asset_manager</code> 多出 <code>sync.manage</code>，导致按钮可见但点击 403）。</td>
+        <td>本次改造<b>不新增也不修改任何权限位</b>，只调整 <code>v-if</code> 的呈现位置。改完核对一遍两个文件的权限表逐项相等。</td>
+      </tr>
+      <tr>
+        <td><b>只读会话露出写入口</b></td>
+        <td>云之家深链免登的会话 <code>auth.readonly = true</code>，侧栏与抽屉已隐藏。新增底部标签栏时若漏掉这个判断，会出现「点得下去但 403」。</td>
+        <td>标签栏、FAB、侧栏三处必须用<b>同一个</b> <code>!auth.readonly</code> 条件。建议抽成一个 computed 统一引用。</td>
+      </tr>
+      <tr>
+        <td><b>深链失效</b></td>
+        <td>云之家待办里的链接形如 <code>fams.example.com:8448/#/repairs/2019</code>，已经推送到员工手机。路由一旦改名，历史待办全部打不开。</td>
+        <td><b>本方案零路由改动</b>（见 3.4 映射表）。落地时必须逐条核对 path 与 route name 未变。</td>
+      </tr>
+      <tr>
+        <td><b>构建与部署</b></td>
+        <td>前端改动必须重新构建才生效（<code>web/dist</code> 被 <code>go:embed</code> 进二进制）；<code>npm run build</code> 会因批量删除守卫中止。</td>
+        <td>沿用已固化的流程：先把 <code>web/dist</code> 移出仓库再构建；构建后用首页 JS 文件名作为版本指纹验收；对生产环境直接截图做最终确认。</td>
+      </tr>
+      <tr>
+        <td><b>顺手「优化」业务约束</b></td>
+        <td>视觉改造时容易把 <code>MANUAL_EXCLUDED_STATUSES</code>（维修中/调拨中不可手动改状态）当成多余的禁用逻辑删掉。次日星瀚同步会抹掉本地改动，用户会认为系统丢数据。</td>
+        <td>P4/P5 改动列表页与详情页时，<b>业务逻辑一行不动</b>，只改呈现。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 class="sub">7.3 验收清单</h3>
+  <p>每期上线后逐项确认，全部通过才算完成：</p>
+  <ul class="clean">
+    <li class="ok">首页引用的 JS 文件名已变化（版本指纹）</li>
+    <li class="ok">对生产环境截图，页面真实渲染新设计（不是只看本地产物）</li>
+    <li class="ok">全站对比度复测：所有正文 ≥ 4.5:1，大字号 ≥ 3:1</li>
+    <li class="ok">各角色账号逐一登录，侧栏分组正确、无空组</li>
+    <li class="ok">云之家免登的只读会话：无侧栏、无抽屉、无标签栏、无 FAB</li>
+    <li class="ok">历史深链可打开：<code>#/repairs/{id}</code> 至少测一张真实单据</li>
+    <li class="ok">窄屏与横屏（高 ≤520px）两种触发条件都验证标签栏与留白</li>
+    <li class="ok">写操作按钮 loading 期间不可重复提交（报修、批量更新）</li>
+    <li class="ok">浏览器控制台运行时异常 0 条</li>
+  </ul>
+
+  <div class="note">
+    <b>文档信息</b><br>
+    版本 v1.0 · 基准代码 <code>6c62a3e</code> · 编制日期 2026-09-24<br>
+    诊断依据：<code>Main.vue</code>、<code>SideMenu.vue</code>、<code>auth.ts</code>、<code>Home.vue</code>、
+    <code>asset/List.vue</code>、<code>scan/Scan.vue</code>、<code>useIsMobile.ts</code>、
+    <code>api/meta.ts</code>、<code>router/index.ts</code> 的真实读取结果。<br>
+    配套文档：<code>docs/登录页改版设计说明.md</code>（已落地的视觉语言来源）、
+    <code>docs/多角色改造方案.md</code>（权限模型来源）。
+  </div>
+</section>
+
+</main>
+</div>
+</body>
+</html>

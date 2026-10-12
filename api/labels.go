@@ -3,8 +3,6 @@ package api
 import (
 	"net/http"
 	"strings"
-
-	"asset-mgr/model"
 )
 
 // 二维码标签相关的三个只读查询。都刻意不加 requirePerm —— 与
@@ -94,7 +92,7 @@ func (s *Server) handleCardCountItems(w http.ResponseWriter, r *http.Request) {
 	}
 	me := userFrom(r)
 	var assigneeID int64
-	if me.Role == model.RoleCounter {
+	if countRestrictToSelf(me) {
 		if me.EmployeeID == 0 {
 			writeErr(w, http.StatusForbidden, "当前账号未绑定员工，无法盘点")
 			return

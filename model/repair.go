@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // DocTypeRepair 是 doc_status_log 的判别式：单据类型。doc_status_log 建成通用表，
 // 后续的调拨单 / 领用单复用同一张表，只换这个值（见架构建议 D2）。
@@ -59,6 +62,41 @@ func RepairStatusLabel(code string) string {
 
 // RepairDoneStatuses 是终态集合：进入这些状态后单据不再流转。
 var RepairDoneStatuses = []string{RepairDone, RepairRejected, RepairCancelled}
+
+// RepairDeletableStatuses 是**允许被物理删除**的状态白名单：待受理 + 已撤单。
+//
+// 判定标准是「这张单是否还挂着未兑现的外部承诺」（云之家侧待办 + 资产卡状态）：
+//   - pending   从未被受理，云之家侧只有一条给受理人的待办，删除时由 OnRepairDeleted 清理；
+//   - cancelled 已是终态，撤单时已跑过同一套整单清理（deliverDeleteAll），删除只是再确认一次。
+//
+// 两者都**从未写过 asset_card.biz_status**：该列只有进出 repairing 时才写，而 cancel 只能来自
+// pending / accepted / dispatched（见 store 的 repairTransitions），永远不来自 repairing。
+// 故删除这两类单都无需回滚资产卡状态。
+//
+// 刻意排除：accepted / dispatched 在云之家侧挂着他人的在办待办，删掉会让那些待办指向 404；
+// done / rejected / scrapping 是别的终态，删除会抹掉已完成业务的审计痕迹。
+// **加新状态时改这里**，而不是在 store / api / 前端各自写死一份。
+var RepairDeletableStatuses = []string{RepairPending, RepairCancelled}
+
+// IsRepairDeletable 判断某状态是否允许物理删除。
+func IsRepairDeletable(status string) bool {
+	for _, s := range RepairDeletableStatuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
+}
+
+// RepairDeletableLabel 返回白名单的中文串（如「待受理 / 已撤单」），
+// 供错误文案、审计日志与前端提示复用，避免各处手拼导致说法漂移。
+func RepairDeletableLabel() string {
+	labels := make([]string, 0, len(RepairDeletableStatuses))
+	for _, s := range RepairDeletableStatuses {
+		labels = append(labels, RepairStatusLabel(s))
+	}
+	return strings.Join(labels, " / ")
+}
 
 // 维修单动作码。写进 doc_status_log.action，供时间线展示。
 const (

@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // 资产状态枚举，与参考系统保持一致
 const (
@@ -50,10 +53,10 @@ type AssetCard struct {
 	CategoryID   int64  `json:"category_id"`
 	CategoryName string `json:"category_name,omitempty"`
 
-	Spec     string  `json:"spec"`
-	SerialNo string  `json:"serial_no"`
-	Unit     string  `json:"unit"`
-	Status   string  `json:"status"`
+	Spec     string `json:"spec"`
+	SerialNo string `json:"serial_no"`
+	Unit     string `json:"unit"`
+	Status   string `json:"status"`
 	// BizStatus 是**台账本地维护的业务状态**（维修中 / 未来的调拨中 / 领用中…），
 	// 与星瀚托管的生命周期状态 Status 物理分离。存在的唯一理由：Status 是星瀚托管列，
 	// 每天 00:00 的定时同步会把本地置的「维修中」重置回「在用」（见 docs/维修流程模块架构建议.md §1）。
@@ -179,9 +182,16 @@ type FinanceUpdate struct {
 
 // ListQuery 列表查询条件。Sort 与筛选字段都经过白名单映射，不直接拼进 SQL。
 type ListQuery struct {
-	Keyword      string
-	Status       []string
-	CategoryID   int64
+	Keyword    string
+	Status     []string
+	CategoryID int64
+	// Repairable 按「分类是否允许报修（asset_category.repairable）」筛选，0 值表示不筛选。
+	// 用指针而不是 bool：bool 的零值 false 无法区分「不筛选」和「只要不可维修」，
+	// 而「只要不可维修」是真实存在的查询（例如导出不可报修清单）。
+	// nil = 不筛选；指向 true = 只要可维修的；指向 false = 只要不可维修的。
+	// 条件在 store 层写成 COALESCE(cat.repairable, 0) = ?，与列表返回的
+	// AssetCard.CategoryRepairable 同源同口径，避免出现「筛出来但显示的标志不一致」。
+	Repairable   *bool
 	AreaID       int64
 	UseDeptID    int64
 	UseCompanyID int64
@@ -213,14 +223,14 @@ type ListResult struct {
 
 // TreeNode 供分类与区域两棵树复用
 type TreeNode struct {
-	ID           int64       `json:"id"`
-	ParentID     int64       `json:"parent_id"`
-	Name         string      `json:"name"`
-	Code         string      `json:"code"`
-	ShortName    string      `json:"short_name,omitempty"`
-	UseMonths    int         `json:"use_months,omitempty"`
-	ResidualRate float64     `json:"residual_rate,omitempty"`
-	SortIndex    int         `json:"sort_index"`
+	ID           int64   `json:"id"`
+	ParentID     int64   `json:"parent_id"`
+	Name         string  `json:"name"`
+	Code         string  `json:"code"`
+	ShortName    string  `json:"short_name,omitempty"`
+	UseMonths    int     `json:"use_months,omitempty"`
+	ResidualRate float64 `json:"residual_rate,omitempty"`
+	SortIndex    int     `json:"sort_index"`
 	// Repairable 仅对分类（asset_category）有意义：该分类下的资产是否允许提交维修单。
 	// 它是**台账本地列**——同步链路对分类只有 INSERT、没有 UPDATE，故不会被每日同步抹掉
 	// （依据见 docs/增量架构-可维修标签与首页.md §1.1，由 store/category_guard_test.go 钉死）。
@@ -300,9 +310,17 @@ type User struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	RealName string `json:"real_name"`
-	Role     string `json:"role"` // admin | asset_manager | counter | dept_head | viewer
+	// Role 是**主角色**（= Roles[0]），保留两个用途：① 旧前端 / 旧 token 仍读它；
+	// ② 回滚时把二进制换回旧版本，旧版本读到的仍是主角色，不会变成「无权限」。
+	// ⚠️ 判断权限请用 CanAny(u.EffectiveRoles(), perm)，判断角色请用 HasRole，
+	// 不要直接比 u.Role —— 多角色账号下 u.Role 只是角色集合里的第一个。
+	Role string `json:"role"`
+	// Roles 是账号的**全部角色**（一人可多角色，2026-09-24 需求）。
+	// 空 slice 表示「旧数据 / 未迁移」，此时 EffectiveRoles() 回落到 []string{Role}，
+	// 因此存量行不迁移也能正确工作。
+	Roles []string `json:"roles,omitempty"`
 	// EmployeeID 把登录账号绑定到员工主数据：盘点模块据此判断「谁是盘点人」，
-	// 「只读」账号也靠它确定「我名下的资产」
+	// 「员工」账号也靠它确定「我名下的资产」
 	EmployeeID   int64  `json:"employee_id"`
 	EmployeeName string `json:"employee_name,omitempty"`
 	// DeptID 是「部门负责人」账号管辖的部门。不走 employee.dept_id——
@@ -318,15 +336,32 @@ const (
 	RoleCounter      = "counter"
 	// RoleDeptHead 部门负责人：只看本部门（含下级）资产，只读
 	RoleDeptHead = "dept_head"
-	// RoleRepairTech 维修工：看指派给自己的维修单 + 自己提交的维修单，接单 / 报完工。
-	// 「自己提交的」这一维是为角色变更兜底：员工以 viewer 身份报修后若被改为维修工，
-	// 那些单不该从他眼前消失（见 api/scope.go 的 repairScope）。
-	RoleRepairTech = "repair_tech"
-	RoleViewer     = "viewer"
+	// RoleMaintainer 维护人员：看指派给自己的维修单 + 自己提交的维修单，接单 / 报完工。
+	// 「自己提交的」这一维是为角色变更兜底：账号被从 employee 改成 maintainer 后，
+	// 那些以员工身份报的单不该从他眼前消失（见 api/scope.go 的 repairScope）。
+	RoleMaintainer = "maintainer"
+	// RoleEmployee 员工：看自己名下的资产 + 自己提交的维修单，可报修。
+	RoleEmployee = "employee"
+	// RoleITAdmin IT 管理员：维护 IT 信息设备台账（新增 2026-10-10 需求）。
+	//
+	// ⚠️ 它的**权限**只有 it.manage 一个；但它的**可见范围**是「不限」——
+	// 在 assetScope / repairScope 里都走与 asset_manager 同等的分支，在 itScope 里也不限。
+	// 这是**有意为之、且经用户确认**的取舍：IT 管理员要能检索全库资产才能挑出设备做关联，
+	// 也应当能看到全公司所有 IT 设备。代价是它同时能看到全量资产台账（含金额与财务字段）。
+	//
+	// ⚠️⚠️ **新增角色必须显式登记到每一个按角色分支的地方**，否则会静默落进
+	// `default` 分支 = 「不限范围」= 看到全量数据（api/scope.go 的 assetScope / repairScope
+	// 都是这个结构）。本项目已有的登记点见 docs/IT设备台账-需求与方案.md 的权限矩阵。
+	RoleITAdmin = "it_admin"
 )
 
-// Roles 供前端下拉展示，顺序即展示顺序
-var Roles = []string{RoleAdmin, RoleAssetManager, RoleCounter, RoleDeptHead, RoleRepairTech, RoleViewer}
+// Roles 供前端下拉展示，顺序即展示顺序。
+// 这个顺序同时是 NormalizeRoles 的归一化顺序，也是 roles 列里逗号分隔的书写顺序。
+//
+// ⚠️ 新增角色一律**追加到末尾**：NormalizeRoles 按本切片顺序重排 roles 列，
+// 插在中间会让所有存量账号的 roles 文本在下次保存时被重写（虽不改变语义，但会让
+// diff 与按角色名的排查凭空多出一批无意义的变更）。
+var Roles = []string{RoleAdmin, RoleAssetManager, RoleCounter, RoleDeptHead, RoleMaintainer, RoleEmployee, RoleITAdmin}
 
 // 权限名：前后端共用同一套字符串（前端 stores/auth.ts 有一份等价的角色映射）
 const (
@@ -339,14 +374,19 @@ const (
 
 	// —— 维修流程权限位（P0 即定义，repair.approve / repair.manage 属 P1 用）——
 	// PermRepairReport：提交报修 + 对自己单据的确认 / 退回 / 撤单。
-	//   ⚠️ 它同时授予 viewer，是**有意为之**：打破「viewer 纯只读」的既有不变量。
+	//   ⚠️ 它同时授予 employee，是**有意为之**：打破「员工纯只读」的既有不变量。
 	//   报修正是「服务到每一位员工」的核心动作，且报修天然自收窄（只看得到自己提交的单）。
-	//   需要把「viewer 纯只读」改成「viewer 只读台账、可发起报修」。
 	PermRepairReport   = "repair.report"
 	PermRepairDispatch = "repair.dispatch"
 	PermRepairHandle   = "repair.handle"
 	PermRepairApprove  = "repair.approve"
 	PermRepairManage   = "repair.manage"
+
+	// —— IT 信息设备台账权限位（2026-10-10 需求）——
+	// PermITManage：维护 IT 台账（新增 / 编辑 / 删除 / 导入）。当前只有 it_admin 持有。
+	//   ⚠️ 它**不**授予资产台账的写权限（asset.manage）：IT 管理员看得到资产台账，
+	//   但不该能改资产卡上的数据——那是资产管理员的事。读与写在这里是分开的。
+	PermITManage = "it.manage"
 )
 
 // rolePermissions 固定角色的权限表。admin 在 Can 里兜底放行，不必列出；
@@ -375,13 +415,19 @@ var rolePermissions = map[string]map[string]bool{
 		PermRepairReport:  true,
 		PermRepairApprove: true,
 	},
-	// 维修工：只负责接单 / 报完工
-	RoleRepairTech: {
+	// 维护人员：只负责接单 / 报完工
+	RoleMaintainer: {
 		PermRepairHandle: true,
 	},
-	// viewer 唯一的写权限是 repair.report（有意为之，见 PermRepairReport 注释）
-	RoleViewer: {
+	// employee 唯一的写权限是 repair.report（有意为之，见 PermRepairReport 注释）
+	RoleEmployee: {
 		PermRepairReport: true,
+	},
+	// IT 管理员：只有 it.manage。**刻意不给 asset.manage**——
+	// 他需要「看」全量资产台账来找设备做关联（那是可见范围，不是权限位），
+	// 但不该能改资产卡。读与写分开，是这里唯一的判断依据。
+	RoleITAdmin: {
+		PermITManage: true,
 	},
 }
 
@@ -390,6 +436,119 @@ func Can(role, perm string) bool {
 		return true
 	}
 	return rolePermissions[role][perm]
+}
+
+// —— 多角色（一人可多角色）支持 ——
+//
+// 语义约定（api 层与前端必须一致）：
+//   - 权限 = **并集**：任一角色持有该权限即放行（CanAny）。
+//   - 数据可见范围 = **并集**：任一角色允许看见的行都算可见（api/scope.go 里逐角色算完再合并）。
+//     admin / asset_manager 这类「不限」的角色会把整个范围放大成全量，这是有意的：
+//     并集语义下「不限」就是全集，不给它开特例，否则「A 角色不限、B 角色受限」的行为无法解释。
+//   - 角色列表为空（存量数据）时一律回落到 []string{Role}，见 EffectiveRoles。
+
+// LegacyRoleRenames 是已废弃角色名 → 现行角色名的映射。
+//
+// 存在的唯一理由：改名（viewer→employee、repair_tech→maintainer）之后，**存量库里的行仍带旧名**，
+// 而旧名已不在 Roles 里。若不映射，NormalizeRoles 会把旧名当非法值**过滤掉** ⇒ EffectiveRoles()
+// 变成空集合 ⇒ 在 api/scope.go 里零值 scope 被当成「不限范围」，即**读到全量资产 / 全量维修单**。
+// 这不是假设：生产库有 3 个 role='viewer' 的账号，2026-09-24 用真实数据模拟迁移时实测到
+// `assetScope Restricted=false`（看全部）。所以映射必须做，且数据侧也要就地改名
+// （见 store/mysql.go 的 migrateLegacyRoleNames）。
+var LegacyRoleRenames = map[string]string{
+	"viewer":      RoleEmployee,
+	"repair_tech": RoleMaintainer,
+}
+
+// NormalizeRoleName 把（可能是废弃名的）单个角色名映射成现行名；无法识别时返回空串。
+func NormalizeRoleName(name string) string {
+	name = strings.TrimSpace(name)
+	if renamed, ok := LegacyRoleRenames[name]; ok {
+		return renamed
+	}
+	if isKnownRole(name) {
+		return name
+	}
+	return ""
+}
+
+// NormalizeRoles 归一化角色集合：**先映射废弃名**，再去空白、去重、剔除非法值，
+// 并按 Roles 的声明顺序排序。
+// 排序是为了让「同一组角色」在任何写入路径下都得到同一份字符串，
+// 否则 roles 列的文本会随勾选顺序抖动，diff 与去重都会变得不可靠。
+func NormalizeRoles(in []string) []string {
+	set := map[string]bool{}
+	for _, r := range in {
+		if n := NormalizeRoleName(r); n != "" {
+			set[n] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for _, r := range Roles { // 按声明顺序输出，保证稳定
+		if set[r] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func isKnownRole(role string) bool {
+	for _, r := range Roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseRoles 解析 sys_user.roles 列（逗号分隔）。空串返回 nil。
+func ParseRoles(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return NormalizeRoles(strings.Split(s, ","))
+}
+
+// FormatRoles 把角色集合序列化成 roles 列的值：逗号分隔、无空格。
+// ⚠️ 不能带空格：SQL 侧的 FIND_IN_SET 依赖「无空格」这一约定
+// （见 api/notify_plan.go 的 assetManagerEmpIDs）。
+func FormatRoles(roles []string) string {
+	return strings.Join(NormalizeRoles(roles), ",")
+}
+
+// EffectiveRoles 返回账号实际生效的角色集合。Roles 为空（存量行 / 旧 token）时回落到 Role。
+// 返回的 slice 保证非空且已归一化——除非 Role 本身也是空串（理论上不该出现）。
+func (u *User) EffectiveRoles() []string {
+	if len(u.Roles) > 0 {
+		if n := NormalizeRoles(u.Roles); len(n) > 0 {
+			return n
+		}
+	}
+	if strings.TrimSpace(u.Role) == "" {
+		return nil
+	}
+	return NormalizeRoles([]string{u.Role})
+}
+
+// HasRole 判断角色集合里是否含某个角色。
+func HasRole(roles []string, role string) bool {
+	for _, r := range roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+// CanAny 多角色版权限判定：任一角色持有该权限即放行。
+// admin 仍然恒真（与 Can 一致，admin 在 rolePermissions 里不列）。
+func CanAny(roles []string, perm string) bool {
+	for _, r := range roles {
+		if Can(r, perm) {
+			return true
+		}
+	}
+	return false
 }
 
 type ExternalAssetMap struct {
@@ -480,6 +639,12 @@ const (
 const (
 	ResourceAssetCard = "asset_card"
 	ResourceOrg       = "org"
+	// ResourceYzjOrg 是云之家通讯录增量同步（openId 回填路径 B）的资源标识。
+	//
+	// 它复用 sync_run / sync_state / sync_run_error，但**不属于**星瀚同步链路：
+	// 其 source 为 "yunzhijia"（而非星瀚的 "kingdee"），两者的游标与失败记录彼此独立。
+	// 见 docs/云之家待办通知集成方案.md §6.5。
+	ResourceYzjOrg = "yzj_org"
 )
 
 // ExternalMapStatus 外部映射状态
@@ -530,25 +695,57 @@ func (c CountScope) Empty() bool {
 
 // AssetScope 描述「这个账号能看哪些资产」，零值 = 不限制。
 // 和 CountScope 一样只是数据，由 api 层按角色解析出来，store 只认数字不认角色。
+// AssetScope 资产可见范围。零值表示不限。
+//
+// 多角色（一人可多角色，2026-09-24）：多个维度**同时非零**是合法状态（如 [部门负责人, 员工]），
+// 此时按**并集**判定——命中任一维度即可见。列表侧的 SQL 由 store/card.go 的 scopeConds 同口径产出。
 type AssetScope struct {
-	SelfEmpID int64   // >0：只看这个使用人名下的资产
-	DeptIDs   []int64 // 非空：只看使用部门落在这些部门里的资产
+	SelfEmpID int64   // >0：可见「这个使用人名下」的资产
+	DeptIDs   []int64 // 非空：可见「使用部门落在这些部门里」的资产
+
+	// RepairingCardIDs 非空表示可见「当前有**未到终态**维修单的资产」。
+	//
+	// 「未到终态」= 状态 NOT IN (done, rejected, cancelled)，即待受理 / 已受理 / 待审批 /
+	// 已派工 / 维修中 / 待确认 都算未结单（见 model.RepairTerminalStatuses）。
+	//
+	// ⚠️ **不限报修人**——这是**全公司**口径，不是「我报修的」。任何人的报修单，只要还没结单，
+	// 对应的资产就进入可见范围。理由：员工报修入口（/api/assets?repairable=1、/api/assets/by-code、
+	// 扫码）本身全部经过 assetScope 门控（api/labels.go → denyOutOfScope），员工根本没法对
+	// 看不见的资产报修；故「只看我报修的」等价于现状、是个空改动，用户明确选了「所有未结单的资产」。
+	//
+	// ⚠️ 只由 employee 角色产生（见 api/scope.go 的 RoleEmployee 分支）。维护人员 / dept_head /
+	// counter / admin / asset_manager 一律不变（维护人员维持「看全量台账」）。
+	//
+	// 与 SelfEmpID / DeptIDs 取**并集**：命中任一维度即可见。
+	RepairingCardIDs []int64
 }
 
 func (s AssetScope) Restricted() bool {
-	return s.SelfEmpID > 0 || len(s.DeptIDs) > 0
+	return s.SelfEmpID > 0 || len(s.DeptIDs) > 0 || len(s.RepairingCardIDs) > 0
 }
 
 // Allows 判断单张卡是否在范围内。列表侧走 SQL，这里供点查使用。
+//
+// ⚠️ 各维度必须取**并集**（命中任一即可见）。原实现写成
+// `if s.SelfEmpID > 0 { return c.UserEmpID == s.SelfEmpID }` 的短路形式——
+// 单角色时各维度只会有一个被设，所以看不出问题；但并集下 [部门负责人, 员工]
+// 会让 DeptIDs 被整个吃掉（部门负责人看不到本部门的资产）。
+// 与之对称的 model.RepairScope.Allows 从一开始就是 OR 写法，本函数此前是不对称的那一侧。
 func (s AssetScope) Allows(c *AssetCard) bool {
 	if !s.Restricted() {
 		return true
 	}
-	if s.SelfEmpID > 0 {
-		return c.UserEmpID == s.SelfEmpID
+	if s.SelfEmpID > 0 && c.UserEmpID == s.SelfEmpID {
+		return true
 	}
 	for _, id := range s.DeptIDs {
 		if id == c.UseDeptID {
+			return true
+		}
+	}
+	// 第三维（员工）：有未结单维修单的资产。不限报修人，全公司口径——见字段注释。
+	for _, id := range s.RepairingCardIDs {
+		if id == c.ID {
 			return true
 		}
 	}

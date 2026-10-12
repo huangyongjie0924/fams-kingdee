@@ -22,6 +22,7 @@ type Server struct {
 	syncSvc   *syncer.Service
 	syncSched *syncer.Scheduler
 	yzj       *yunzhijia.Client
+	notify    *NotifyService
 }
 
 func NewServer(st *store.Store, cfg *config.Config) *Server {
@@ -42,9 +43,17 @@ func (s *Server) SetYunzhijiaClient(c *yunzhijia.Client) {
 	s.yzj = c
 }
 
+// SetNotifyService 装配维修待办通知服务。未调用时挂载点为 no-op（不改变既有行为）。
+func (s *Server) SetNotifyService(n *NotifyService) {
+	s.notify = n
+}
+
 func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.HandleFunc("POST /api/sso/login", s.handleSSOLogin)
+	// 第 2 层深链免登：用待办 url 里的一次性 token 换一枚**收窄**的会话 token
+	// （docs/云之家待办通知集成方案.md §5.4）。已在 Authenticate 里豁免鉴权。
+	mux.HandleFunc("POST /api/sso/deeplink-login", s.handleDeeplinkLogin)
 	mux.HandleFunc("GET /api/me", s.handleMe)
 
 	// 首页聚合（需求 B）：读接口不门控，可见范围在数据行上收窄（与列表同一套 scope）。
@@ -144,6 +153,29 @@ func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/assets/{id}/repairs", s.handleCardRepairs)
 	// 维修附件上传：独立路由（不放宽 /api/upload，见 api/repair_upload.go）
 	mux.HandleFunc("POST /api/repair-upload", s.requireAnyPerm(s.handleRepairUpload, model.PermRepairReport, model.PermRepairHandle))
+	// 批量物理删除「待受理」维修单：**仅 admin**（requireAdmin，不走权限位表）。
+	// 路径用字面量 `delete` 而不是 `DELETE /api/repairs`：与本仓其余动作接口
+	// （POST /api/repairs/{id}/<action>）风格一致，且避免 DELETE 带 body 被中间层吃掉。
+	// Go 1.22 ServeMux 里字面量段优先于通配段，与 `POST /api/repairs/{id}/...` 不冲突。
+	mux.HandleFunc("POST /api/repairs/delete", s.requireAdmin(s.handleDeleteRepairs))
+
+	// —— IT 信息设备台账（2026-10-10 需求，见 docs/IT设备台账-需求与方案.md）——
+	// 读接口**不挂 requirePerm**（能进这个页面就该能看），可见范围在数据行上收窄
+	// （列表走 store/it.go 的 itScopeConds，点查走 denyITOutOfScope）——
+	// 与资产台账 / 维修单完全同一套约定。
+	// 写接口挂 requirePerm(it.manage)，当前只有 it_admin 与 admin 持有。
+	mux.HandleFunc("GET /api/it-equipment", s.handleListITEquipment)
+	mux.HandleFunc("POST /api/it-equipment", s.requirePerm(model.PermITManage, s.handleCreateITEquipment))
+	// ⚠️ 这三条字面量路径必须与 `{id}` 通配路径共存：Go 1.22 ServeMux 里
+	// 字面量段优先于通配段，注册时不会 panic（与上面 /api/assets/export 同款先例）。
+	// 但**多一段**的路径要小心：`/api/it-equipment/by-card/{id}` 这种两段路径
+	// 会和 `/api/it-equipment/{id}` 之外的模式打架，故本模块一律用查询串（?card_id=）。
+	mux.HandleFunc("GET /api/it-equipment/export", s.handleITExport)
+	mux.HandleFunc("GET /api/it-equipment/import-template", s.handleITImportTemplate)
+	mux.HandleFunc("POST /api/it-equipment/import", s.requirePerm(model.PermITManage, s.handleITImport))
+	mux.HandleFunc("GET /api/it-equipment/{id}", s.handleGetITEquipment)
+	mux.HandleFunc("PUT /api/it-equipment/{id}", s.requirePerm(model.PermITManage, s.handleUpdateITEquipment))
+	mux.HandleFunc("DELETE /api/it-equipment/{id}", s.requirePerm(model.PermITManage, s.handleDeleteITEquipment))
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -189,10 +221,13 @@ func pathID(r *http.Request) (int64, error) {
 	return strconv.ParseInt(r.PathValue("id"), 10, 64)
 }
 
-// requirePerm 按固定角色的权限表放行，取代此前的 requireAdmin。
+// requirePerm 按角色权限表放行，取代此前的 requireAdmin。
+// 多角色语义：权限是并集，任一角色持有该权限即放行（admin 恒真）。
 func (s *Server) requirePerm(perm string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !model.Can(userFrom(r).Role, perm) {
+		// userFrom(r) 返回的是值（不可寻址），EffectiveRoles 是指针方法，须先落到局部变量。
+		u := userFrom(r)
+		if !model.CanAny(u.EffectiveRoles(), perm) {
 			writeErr(w, http.StatusForbidden, "当前角色没有此操作权限")
 			return
 		}
@@ -202,17 +237,38 @@ func (s *Server) requirePerm(perm string, next http.HandlerFunc) http.HandlerFun
 
 // requireAnyPerm 与 requirePerm 相同，但命中任意一个权限即放行。
 // 用于「多个角色各凭不同权限做同一件事」的接口，如维修附件上传
-// （报修人凭 repair.report、维修工凭 repair.handle）。风格与 requirePerm 一致。
+// （报修人凭 repair.report、维护人员凭 repair.handle）。风格与 requirePerm 一致。
 func (s *Server) requireAnyPerm(next http.HandlerFunc, perms ...string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		role := userFrom(r).Role
+		u := userFrom(r)
+		roles := u.EffectiveRoles()
 		for _, p := range perms {
-			if model.Can(role, p) {
+			if model.CanAny(roles, p) {
 				next(w, r)
 				return
 			}
 		}
 		writeErr(w, http.StatusForbidden, "当前角色没有此操作权限")
+	}
+}
+
+// requireAdmin 是**仅超级管理员**的守卫。
+//
+// 与 requirePerm 的区别：requirePerm 走「角色 → 权限位」表（admin 恒真，但 asset_manager 等角色
+// 也可能持有该权限位）；而本守卫只认 admin 角色本身。
+//
+// 什么时候该用它：**不可恢复**的操作。例如物理删除业务单据 —— 若走 requirePerm，将来只要有人给
+// 某个角色加一个权限位，那个角色就顺带获得了删除权；而这种授予是无声的（权限表与路由相隔很远）。
+// 这里硬判角色，把这个决定钉在路由上，改动必须显式发生。
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// userFrom(r) 返回的是值（不可寻址），EffectiveRoles 是指针方法，须先落到局部变量。
+		u := userFrom(r)
+		if !model.HasRole(u.EffectiveRoles(), model.RoleAdmin) {
+			writeErr(w, http.StatusForbidden, "仅超级管理员可执行此操作")
+			return
+		}
+		next(w, r)
 	}
 }
 
@@ -226,6 +282,12 @@ func (s *Server) handleEnums(w http.ResponseWriter, r *http.Request) {
 		"count_results":    model.CountResults,
 		"repair_statuses":  model.RepairStatuses,
 		"repair_urgencies": model.RepairUrgencies,
+		// IT 台账的三组枚举。**必须从这里下发**，前端不另抄一份——
+		// 否则「后端加了取值、前端下拉没有」或反过来的漂移迟早发生
+		// （本仓已在 rolePermissions 上踩过一次，见 model/model.go 的注释）。
+		"it_device_types": model.ITDeviceTypes,
+		"it_purposes":     model.ITPurposes,
+		"it_statuses":     model.ITStatuses,
 	})
 }
 

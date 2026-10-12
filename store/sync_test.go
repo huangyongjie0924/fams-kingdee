@@ -391,17 +391,33 @@ func TestRememberToleratesNilOverlay(t *testing.T) {
 }
 
 // testDSN 取集成测试用的 DSN：优先环境变量，其次项目根的 config.yaml。
-// 两者都拿不到就 Skip —— 默认不依赖外部数据库，避免 CI 上变红。
+//
+// ⚠️ 安全阀（默认不连生产库）：生产机 10.0.0.120 上只有生产库（asset），没有独立测试库；
+// 而 store.New 会**自动执行表结构迁移（DDL）**——「跑一次测试」=「连生产库并执行 DDL」。
+// 故：
+//   - 显式设置了 ASSET_MGR_TEST_DSN → 使用它（这是**显式穿透**，打印脱敏库名留痕）；
+//   - 否则读 config.yaml，库名不含 "test" 就 Skip（宁可跳过，也不误连生产库）；
+//   - 解析不出库名同样 Skip。
+//
+// 判定用 config.ParseDSNDatabaseName + config.IsTestDatabaseName（与 api 包共用同一对函数，
+// 规则只写一份，避免两个包给出不一致的「安全」结论）。
 func testDSN(t *testing.T) string {
 	t.Helper()
 	if dsn := os.Getenv("ASSET_MGR_TEST_DSN"); dsn != "" {
+		// 只打库名，绝不打整条 DSN（里面含密码）。
+		t.Logf("集成测试：使用 ASSET_MGR_TEST_DSN，目标库 %q", config.ParseDSNDatabaseName(dsn))
 		return dsn
 	}
 	cfg, err := config.Load(filepath.Join("..", "config.yaml"))
 	if err != nil {
 		t.Skipf("未设置 ASSET_MGR_TEST_DSN，且读不到 ../config.yaml，跳过需要数据库的测试: %v", err)
 	}
-	return cfg.DSN()
+	dsn := cfg.DSN()
+	if dbName := config.ParseDSNDatabaseName(dsn); !config.IsTestDatabaseName(dbName) {
+		t.Skipf("DSN 指向的库 %q 不像测试库（生产库？），已跳过需要数据库的集成测试。"+
+			"如需运行，请设置 ASSET_MGR_TEST_DSN 指向一个独立测试库", dbName)
+	}
+	return dsn
 }
 
 // TestDryRunOverlayAgainstRealDB 用真实数据库验证 dry-run 的计数不再高估。
